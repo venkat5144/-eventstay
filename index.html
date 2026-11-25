@@ -42,7 +42,7 @@
 <div class="hotelrow"><div class="hotelbadge">🏩</div><div class="hotelinfo"><b>Lakeview Suites</b><small>Secunderabad · 40 rooms</small></div><div class="occupancy"><div class="bar"><i style="width:75%"></i></div><small>30 / 40 rooms</small></div><span class="status">Active</span></div>
 <div class="hotelrow"><div class="hotelbadge">🏨</div><div class="hotelinfo"><b>Green Leaf Inn</b><small>Hyderabad · 20 rooms</small></div><div class="occupancy"><div class="bar"><i style="width:0%"></i></div><small>0 / 20 rooms</small></div><span class="status warn">Not started</span></div>
 <div class="panelhead" style="margin:22px 0 8px" id="guests"><div><div class="paneltitle">Recently added guests</div><div class="panelmeta">Latest guest and room assignments</div></div><button class="btn" onclick="openModal()">＋ Add</button></div>
-<div class="tablewrap"><table class="table"><thead><tr><th>Guest / family</th><th>Hotel & room</th><th>Guests</th><th>Check-in</th><th>Status</th></tr></thead><tbody id="guestRows">
+<div class="tablewrap"><table class="table"><thead><tr><th>Guest / family</th><th>Belongs to</th><th>Hotel & room</th><th>Guests</th><th>Check-in</th><th>Status</th><th>Invitation</th></tr></thead><tbody id="guestRows">
 <tr><td><div class="guest"><div class="miniavatar">RK</div><b>Rahul Kumar family</b></div></td><td>VR Grand · 102</td><td>4</td><td>12 Dec</td><td><span class="tag">Checked in</span></td></tr>
 <tr><td><div class="guest"><div class="miniavatar">AS</div><b>Ananya Sharma</b></div></td><td>The Park · 208</td><td>2</td><td>12 Dec</td><td><span class="tag pending">Expected</span></td></tr>
 <tr><td><div class="guest"><div class="miniavatar">MP</div><b>Mehta family</b></div></td><td>VR Grand · 305</td><td>5</td><td>12 Dec</td><td><span class="tag">Checked in</span></td></tr>
@@ -64,15 +64,66 @@
 <div class="footer">EVENTSTAY · ACCOMMODATION MANAGEMENT · DEMO DATA</div>
 </div>
 </main></div>
-<div class="modal" id="modal"><div class="dialog"><h2>Add a guest</h2><p>Create a guest or family record for this event. Demo only — data is not saved to a server yet.</p>
-<div class="field"><label>Guest / family name</label><input id="guestName" placeholder="e.g. Rahul Kumar family"></div>
+<div class="modal" id="modal"><div class="dialog"><h2>Add a guest</h2><p>Add the guest count, family side and contact details. WhatsApp opens with a ready-to-send room and venue invitation.</p>
+<div class="field"><label>Guest / family name</label><input id="guestName" placeholder="e.g. Rahul Kumar family" required></div>
+<div class="field"><label>Mobile number (with country code)</label><input id="guestPhone" type="tel" placeholder="e.g. +91 98765 43210" required></div>
+<div class="field"><label>Guest belongs to</label><select id="guestSide"><option value="Bride">Bride</option><option value="Groom">Groom</option><option value="Both families">Both families</option><option value="Friends">Friends</option><option value="Colleagues">Colleagues</option><option value="Other">Other</option></select></div>
 <div class="field"><label>Hotel & room</label><select id="guestRoom"><option>VR Grand · 102</option><option>The Park · 208</option><option>Lakeview · 114</option></select></div>
-<div class="field"><label>Number of guests</label><input id="guestCount" type="number" min="1" max="12" value="2"></div>
+<div class="field"><label>Hotel address</label><input id="hotelAddress" placeholder="Hotel full address / Google Maps link"></div>
+<div class="field"><label>Number of guests in this booking</label><input id="guestCount" type="number" min="1" max="30" value="2"></div>
 <div class="field"><label>Check-in date</label><input id="guestDate" type="date" value="2026-12-12"></div>
+<div class="field"><label>Event venue address</label><input id="venueAddress" placeholder="Wedding venue full address / Google Maps link"></div>
 <div class="dialogactions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="addGuest()">Add guest</button></div></div></div>
 <script>
-function openModal(){document.getElementById('modal').classList.add('show')}function closeModal(){document.getElementById('modal').classList.remove('show')}
-function addGuest(){const name=document.getElementById('guestName').value.trim();if(!name){alert('Enter a guest or family name.');return}const room=document.getElementById('guestRoom').value;const count=Math.max(1,Number(document.getElementById('guestCount').value)||1);const date=document.getElementById('guestDate').value;const initials=name.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();const d=date?new Date(date+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):'—';const tr=document.createElement('tr');tr.innerHTML='<td><div class="guest"><div class="miniavatar"></div><b></b></div></td><td></td><td></td><td></td><td><span class="tag pending">Expected</span></td>';tr.querySelector('.miniavatar').textContent=initials;tr.querySelector('.guest b').textContent=name;tr.children[1].textContent=room;tr.children[2].textContent=count;tr.children[3].textContent=d;document.getElementById('guestRows').prepend(tr);document.getElementById('allocated').textContent=Number(document.getElementById('allocated').textContent)+count;document.getElementById('guestName').value='';closeModal()}
+const guestStoreKey='eventstay-guests-v2';
+let savedGuests=JSON.parse(localStorage.getItem(guestStoreKey)||'[]');
+function openModal(){document.getElementById('modal').classList.add('show')}
+function closeModal(){document.getElementById('modal').classList.remove('show')}
+function escapeText(value){return String(value||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function addGuest(){
+ const name=document.getElementById('guestName').value.trim();
+ const phone=document.getElementById('guestPhone').value.trim();
+ const room=document.getElementById('guestRoom').value;
+ const side=document.getElementById('guestSide').value;
+ const count=Math.max(1,Math.min(30,Number(document.getElementById('guestCount').value)||1));
+ const date=document.getElementById('guestDate').value;
+ const hotelAddress=document.getElementById('hotelAddress').value.trim();
+ const venueAddress=document.getElementById('venueAddress').value.trim();
+ if(!name||!phone){alert('Enter the guest name and mobile number.');return}
+ const digits=phone.replace(/\D/g,'');
+ if(digits.length<10){alert('Enter a valid mobile number with country code.');return}
+ const guest={id:Date.now(),name,phone,room,side,count,date,hotelAddress,venueAddress};
+ savedGuests.unshift(guest);localStorage.setItem(guestStoreKey,JSON.stringify(savedGuests));
+ renderGuest(guest);
+ document.getElementById('allocated').textContent=Number(document.getElementById('allocated').textContent)+count;
+ ['guestName','guestPhone','hotelAddress','venueAddress'].forEach(id=>document.getElementById(id).value='');
+ closeModal();
+}
+function whatsappUrl(g){
+ const eventName=document.querySelector('.eventselect').selectedOptions[0].textContent;
+ const msg=[
+ 'Hello '+g.name+',',
+ 'You are invited to attend '+eventName+'.',
+ 'Accommodation details:',
+ g.room,
+ 'Guests in your booking: '+g.count,
+ 'Check-in: '+(g.date||'Please confirm with the organizer'),
+ 'Hotel address: '+(g.hotelAddress||'To be shared'),
+ 'Wedding / event venue address: '+(g.venueAddress||'To be shared'),
+ 'Guest group: '+g.side,
+ 'We look forward to welcoming you!'
+ ].join('\n');
+ return 'https://wa.me/'+g.phone.replace(/\D/g,'')+'?text='+encodeURIComponent(msg);
+}
+function renderGuest(g){
+ const body=document.getElementById('guestRows');
+ const tr=document.createElement('tr');
+ const initials=g.name.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();
+ const d=g.date?new Date(g.date+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'}):'—';
+ tr.innerHTML='<td><div class="guest"><div class="miniavatar">'+escapeText(initials)+'</div><b>'+escapeText(g.name)+'</b></div></td><td>'+escapeText(g.side)+'</td><td>'+escapeText(g.room)+'</td><td>'+g.count+'</td><td>'+escapeText(d)+'</td><td><span class="tag pending">Expected</span></td><td><a class="btn primary" style="display:inline-block;text-decoration:none;padding:7px 9px" target="_blank" rel="noopener" href="'+whatsappUrl(g)+'">WhatsApp invite</a></td>';
+ body.prepend(tr);
+}
+savedGuests.slice().reverse().forEach(renderGuest);
 document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
 </script>
 </body></html>
