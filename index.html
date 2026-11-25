@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#102b28"><title>EventStay — Event accommodation, under control</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
@@ -95,6 +95,85 @@ body{background:var(--paper);color:var(--ink);font-family:'DM Sans',sans-serif}
  .panel{padding:16px}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+
+/* Responsive touch layout — preserve every workspace destination on phones */
+@media(max-width:700px){
+ html,body{min-width:320px;overflow-x:hidden}
+ body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom)}
+ .shell{display:block;min-height:100dvh}
+ .side{position:sticky;top:0;z-index:4;padding:12px 14px 9px;display:block}
+ .brand{padding:0 2px 9px;font-size:18px}
+ .brandmark{width:31px;height:31px}
+ .workspace{display:block;margin:0 0 8px;padding:8px 10px;font-size:10px}
+ .workspace b{display:inline;margin:0 0 0 7px;font-size:11px}
+ .navlabel{display:none}
+ .nav{display:flex;gap:5px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;margin:0 -3px;padding:2px 3px 4px}
+ .nav::-webkit-scrollbar{display:none}
+ .nav a,.nav a:not(.active){display:flex;flex:0 0 auto;align-items:center;min-height:40px;padding:8px 11px;margin:0;white-space:nowrap;font-size:11px;border:1px solid #d7e2d3}
+ .nav a .ico{width:auto}
+ .sidebottom{display:none}
+ .topbar{height:auto;min-height:52px;padding:8px 14px;gap:8px;position:relative}
+ .crumb{font-size:11px}
+ .topright{min-width:0;gap:6px}
+ .eventselect{max-width:min(52vw,190px);min-height:40px;font-size:11px;padding:7px}
+ .bell{min-width:40px;min-height:40px}
+ .content{padding:20px 13px 28px}
+ .heading{display:flex;flex-direction:column;align-items:stretch;gap:12px;margin-bottom:18px}
+ .h1{font-size:25px;line-height:1.2}
+ .sub{font-size:12px;line-height:1.5}
+ .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0}
+ .btn{min-height:44px;padding:10px 12px}
+ .stats{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:14px}
+ .stat{min-width:0;padding:13px 12px}
+ .stathead{font-size:10px;gap:5px;align-items:center}
+ .staticon{width:25px;height:25px;flex:none}
+ .value{font-size:24px;margin:8px 0 2px}
+ .delta{font-size:9px;line-height:1.4}
+ .grid{grid-template-columns:minmax(0,1fr);gap:13px}
+ .panel{padding:15px 13px}
+ .panelhead{gap:8px;align-items:flex-start}
+ .paneltitle{font-size:14px}
+ .panelmeta{font-size:10px;line-height:1.4}
+ .hotelrow{gap:8px;flex-wrap:wrap;padding:12px 0}
+ .hotelbadge{width:36px;height:36px;flex:none}
+ .hotelinfo{flex:1 1 calc(100% - 150px)}
+ .hotelinfo b{font-size:11px}
+ .hotelinfo small{font-size:10px}
+ .occupancy{width:calc(100% - 54px);margin-left:44px;order:3}
+ .hotelrow .status{margin-left:auto}
+ .tablewrap{margin:0 -3px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+ .table{min-width:700px}
+ .table th,.table td{padding:11px 9px}
+ .quick{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .quick button{min-height:86px;padding:12px}
+ .quick strong{font-size:11px}
+ .activity{gap:9px}
+ .activity p{font-size:11px}
+ .footer{padding:18px 0}
+ .modal{align-items:flex-end;padding:0}
+ .dialog{width:100%;max-height:90dvh;overflow:auto;border-radius:16px 16px 0 0;padding:21px 17px calc(18px + env(safe-area-inset-bottom))}
+ .field input,.field select{min-height:44px;font-size:16px}
+ .dialogactions{position:sticky;bottom:-1px;background:#fffdf8;padding-top:10px}
+}
+@media(min-width:701px) and (max-width:1050px){
+ .shell{grid-template-columns:205px minmax(0,1fr)}
+ .nav a{font-size:12px;padding:10px}
+ .content{padding:24px 20px}
+ .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .grid{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:380px){
+ .content{padding-left:10px;padding-right:10px}
+ .h1{font-size:23px}
+ .stat{padding:11px 9px}
+ .value{font-size:22px}
+ .eventselect{max-width:47vw}
+ .hotelinfo{flex-basis:calc(100% - 130px)}
+}
+@media(hover:none){
+ .btn:hover,.quick button:hover{transform:none}
+ .btn:active,.quick button:active,.nav a:active{background:#dce8d8}
+}
 </style>
 </head>
 <body>
