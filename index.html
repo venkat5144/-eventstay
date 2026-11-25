@@ -10,6 +10,91 @@
 .modal{display:none;position:fixed;inset:0;background:#0b201dcc;z-index:5;align-items:center;justify-content:center;padding:20px}.modal.show{display:flex}.dialog{width:min(440px,100%);background:#fff;border-radius:16px;padding:24px;box-shadow:0 25px 80px #0003}.dialog h2{font:800 20px Manrope;margin:0 0 6px}.dialog p{font-size:12px;color:var(--muted);margin:0 0 18px}.field{margin:12px 0}.field label{display:block;font-size:11px;font-weight:700;margin-bottom:6px}.field input,.field select{width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;background:white}.dialogactions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 @media(max-width:1050px){.shell{grid-template-columns:205px 1fr}.stats{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.content{padding:25px 22px}}
 @media(max-width:700px){.shell{display:block}.side{padding:13px 15px;display:block}.brand{padding:0}.workspace,.navlabel,.nav a:not(.active),.sidebottom{display:none}.nav{display:flex;overflow:auto;margin-top:12px}.nav a{white-space:nowrap;padding:8px 10px;margin:0 4px 0 0;font-size:11px}.topbar{height:55px;padding:0 17px}.content{padding:22px 15px}.heading{display:block}.actions{margin-top:15px}.stats{gap:9px}.stat{padding:13px}.value{font-size:23px}.stathead{font-size:10px}.occupancy{width:85px}.topright{gap:7px}.eventselect{max-width:150px}.h1{font-size:23px}}
+
+/* EventStay visual direction: botanical, calm, editorial, hospitality-first */
+:root{
+ --ink:#243b32;--muted:#64776d;--green:#456b55;--mint:#e4eee3;
+ --paper:#f5f6ef;--line:#dce4d8;--orange:#bd8555;--white:#fffdf8;
+ --shadow:0 8px 24px rgba(43,67,48,.055);
+ --sage:#dce8d8;--deep:#294638;--moss:#6e896f;--cream:#fbfaf4;
+}
+html{scroll-behavior:smooth}
+body{background:var(--paper);color:var(--ink);font-family:'DM Sans',sans-serif}
+::selection{background:#c9ddc7;color:#243b32}
+:focus-visible{outline:3px solid #87a98a;outline-offset:3px}
+.side{background:#e6ede2;color:var(--ink);border-right:1px solid #d6e0d3;padding:30px 18px}
+.brand{color:#294638;font-family:'Manrope',sans-serif;letter-spacing:-.7px}
+.brandmark{background:#456b55;color:#fff;border-radius:10px}
+.workspace{border:1px solid #cbd8c9;color:#64776d;background:#edf2e9}
+.workspace b{color:#294638}
+.navlabel{color:#829485;font-weight:700}
+.nav a{color:#52695a;border-radius:7px}
+.nav a.active,.nav a:hover{background:#d2e1d0;color:#294638}
+.sidebottom{border-color:#cbd8c9;color:#64776d}
+.profile b{color:#294638}
+.avatar{background:#d5dfca;color:#355341}
+.topbar{background:rgba(251,250,244,.96);border-bottom:1px solid var(--line)}
+.crumb{color:#748278}.crumb b{color:#294638}
+.eventselect,.bell,.btn{border-color:#d5dfd2;background:#fffdf8;color:#385342;border-radius:7px}
+.btn{font-weight:600;transition:background .18s ease,border-color .18s ease,transform .18s ease}
+.btn:hover{background:#edf3e9;border-color:#afc4ad;filter:none;transform:translateY(-1px)}
+.btn.primary{background:#456b55;border-color:#456b55;color:#fff}
+.btn.primary:hover{background:#355743;border-color:#355743}
+.content{max-width:1440px;padding-top:34px}
+.heading{align-items:center;margin-bottom:30px}
+.eyebrow{display:none}
+.h1{font-family:'Manrope',sans-serif;font-size:31px;letter-spacing:-1.15px;font-weight:700;color:#294638;margin:0 0 7px}
+.sub{font-size:13px;color:#718176}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;background:#fffdf8;border:1px solid var(--line);border-radius:12px;margin-bottom:22px;box-shadow:none;overflow:hidden}
+.stat{background:transparent;border:0;border-radius:0;box-shadow:none;padding:19px 22px;position:relative}
+.stat+.stat{border-left:1px solid var(--line)}
+.stathead{color:#6c7d70;font-size:11px;font-weight:600}
+.staticon{background:#edf2e9;color:#456b55;border-radius:8px}
+.value{font:700 29px 'Manrope',sans-serif;letter-spacing:-1px;color:#294638;margin:11px 0 3px;font-variant-numeric:tabular-nums}
+.delta{font-size:10px;color:#55785e}.delta span{color:#89958b}
+.card{background:var(--white);border:1px solid var(--line);border-radius:12px;box-shadow:none}
+.panel{padding:22px}
+.paneltitle{font:700 15px 'Manrope',sans-serif;color:#294638;letter-spacing:-.25px}
+.panelmeta{color:#849087;margin-top:4px}
+.panelhead{margin-bottom:14px}
+.hotelrow{border-color:#edf0e9;padding:15px 0}
+.hotelbadge{background:#edf1e8;border-radius:9px}
+.hotelinfo b{font-size:12px;color:#304b3a}.hotelinfo small{color:#849087}
+.bar{background:#edf0e9;height:5px}.bar i{background:#729477}
+.status{background:#e8f0e5;color:#426a4c}
+.status.warn{background:#f5eddf;color:#916b3e}
+.table th{color:#819084;border-color:#e8ede5;font-size:9px;letter-spacing:1px}
+.table td{border-color:#edf0e9;color:#4c6153}
+.table tbody tr:hover{background:#f7f8f1}
+.miniavatar{background:#e8eee3;color:#48634d;border-radius:7px}
+.tag{background:#e7f0e5;color:#426a4c}
+.tag.pending{background:#f5eddf;color:#916b3e}
+.quick button{background:#fbfaf4;border-color:#e4e9df;border-radius:9px;transition:.18s}
+.quick button:hover{background:#edf3e9;border-color:#c5d5c1;transform:translateY(-2px)}
+.quick span{color:#58785e}
+.activity{border-color:#edf0e9}
+.dot{background:#759579}
+.footer{color:#98a397;letter-spacing:1px;font-size:9px}
+.modal{background:rgba(32,53,40,.48);backdrop-filter:blur(3px)}
+.dialog{background:#fffdf8;border:1px solid #dce4d8;border-radius:12px}
+.dialog h2{font-family:'Manrope',sans-serif;color:#294638;letter-spacing:-.5px}
+.dialog p{color:#718176}
+.field label{color:#52695a}
+.field input,.field select{border-color:#dce4d8;border-radius:7px;background:#fffefa;color:#294638}
+.field input:focus,.field select:focus{outline:2px solid #91ae91;border-color:#91ae91}
+@media(max-width:700px){
+ .side{background:#e6ede2;padding:14px 15px;border-right:0;border-bottom:1px solid #d6e0d3}
+ .brand{font-size:18px}
+ .nav a.active{background:#d2e1d0}
+ .stats{grid-template-columns:repeat(2,minmax(0,1fr));}
+ .stat{padding:14px 15px}
+ .stat:nth-child(3){border-left:0;border-top:1px solid var(--line)}
+ .stat:nth-child(4){border-top:1px solid var(--line)}
+ .h1{font-size:25px}
+ .content{padding-top:23px}
+ .panel{padding:16px}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 </style>
 </head>
 <body>
@@ -28,7 +113,7 @@
 <main class="main">
 <header class="topbar"><div class="crumb">Workspace&nbsp; / &nbsp;<b>Overview</b></div><div class="topright"><select class="eventselect"><option>Mehta Wedding · Dec 12–14</option><option>Sharma Reception · Jan 08</option></select><button class="bell" aria-label="Notifications">♧</button></div></header>
 <div class="content">
-<section class="heading"><div><div class="eyebrow">Friday, December 12, 2026</div><h1 class="h1">Event overview</h1><div class="sub">Here’s the accommodation snapshot for your event.</div></div><div class="actions"><button class="btn" onclick="window.print()">↓ Export report</button><button class="btn primary" onclick="openModal()">＋ Add guest</button></div></section>
+<section class="heading"><div><h1 class="h1">Event overview</h1><div class="sub">Here’s the accommodation snapshot for your event.</div></div><div class="actions"><button class="btn" onclick="window.print()">↓ Export report</button><button class="btn primary" onclick="openModal()">＋ Add guest</button></div></section>
 <section class="stats">
 <div class="card stat"><div class="stathead">Total rooms <span class="staticon">⌂</span></div><div class="value" id="totalRooms">248</div><div class="delta">Across 4 hotels <span>· 3 properties active</span></div></div>
 <div class="card stat"><div class="stathead">Guests allocated <span class="staticon">♙</span></div><div class="value" id="allocated">612</div><div class="delta">↑ 28 <span>added this week</span></div></div>
