@@ -95,7 +95,8 @@ app.post("/api/check-in/:allocationId/checkout",wrap(async(req,res)=>{
   await c.query("COMMIT");res.json(rows[0]);
  }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
 }));
-\napp.use((err,req,res,next)=>{console.error(err);if(err instanceof z.ZodError)return res.status(400).json({error:"Validation failed",details:err.issues});if(err.code==="23505")return res.status(409).json({error:"This record already exists"});res.status(500).json({error:process.env.NODE_ENV==="production"?"Internal server error":err.message})});
+
+app.use((err,req,res,next)=>{console.error(err);if(err instanceof z.ZodError)return res.status(400).json({error:"Validation failed",details:err.issues});if(err.code==="23505")return res.status(409).json({error:"This record already exists"});res.status(500).json({error:process.env.NODE_ENV==="production"?"Internal server error":err.message})});
 const port=Number(process.env.PORT||5000);
 await initDb();app.listen(port,()=>console.log("EventStay API listening on "+port));
 process.on("SIGTERM",async()=>{await pool.end();process.exit(0)});
