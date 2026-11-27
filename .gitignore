@@ -4,3 +4,8 @@ server/node_modules/
 server/.env
 .DS_Store
 *.log
+
+# Neon local project credentials and environment files
+.neon
+.env.local
+.env.*.local
