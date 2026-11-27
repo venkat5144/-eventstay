@@ -624,7 +624,7 @@ document.getElementById('newEventBtn').onclick=()=>liveAction(async()=>{
  const groom_name=promptRequired('Groom name (optional)')||'';
  const starts_on=promptRequired('Start date YYYY-MM-DD (optional)')||'';
  const ends_on=promptRequired('End date YYYY-MM-DD (optional)')||'';
- await apiRequest('/api/events',{method:'POST',body:JSON.stringify({name,bride_name,groom_name,starts_on,ends_on})});
+ await apiRequest('/api/events',{method:'POST',body:JSON.stringify({name,bride_name:bride_name||null,groom_name:groom_name||null,starts_on:starts_on||null,ends_on:ends_on||null})});
  await loadLiveWorkspace();
 });
 document.getElementById('newHotelBtn').onclick=()=>liveAction(async()=>{
