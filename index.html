@@ -611,5 +611,116 @@ if(EVENTSTAY_API_BASE){
  document.querySelector('.footer').textContent='EVENTSTAY · DEMO MODE · API NOT CONFIGURED';
 }
 
+
+/* Live management actions: all records below are persisted by the API, not browser storage. */
+const liveStyle=document.createElement('style');liveStyle.textContent='.live-tools{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.live-tools .btn{font-size:12px}.live-empty{padding:18px;border:1px dashed #cbbdb2;border-radius:12px;color:#756b66;background:#fbf8f5}.api-error{color:#a33;font-size:12px;margin:8px 0}.live-hint{font-size:11px;color:#7c706a}';document.head.appendChild(liveStyle);
+const toolsBar=document.createElement('div');toolsBar.className='live-tools';toolsBar.innerHTML='<button class="btn primary" id="newEventBtn">＋ New event</button><button class="btn" id="newHotelBtn">＋ Add hotel</button><button class="btn" id="newRoomBtn">＋ Add room</button><button class="btn" id="linkHotelBtn">↔ Link hotel to event</button><button class="btn" id="logoutBtn">Sign out</button>';
+document.querySelector('.heading').appendChild(toolsBar);
+function promptRequired(label,initial=''){const v=prompt(label,initial);return v===null?null:v.trim()}
+async function liveAction(fn){try{await fn()}catch(e){alert(e.message)}}
+document.getElementById('newEventBtn').onclick=()=>liveAction(async()=>{
+ const name=promptRequired('Event name');if(!name)return;
+ const bride_name=promptRequired('Bride name (optional)')||'';
+ const groom_name=promptRequired('Groom name (optional)')||'';
+ const starts_on=promptRequired('Start date YYYY-MM-DD (optional)')||'';
+ const ends_on=promptRequired('End date YYYY-MM-DD (optional)')||'';
+ await apiRequest('/api/events',{method:'POST',body:JSON.stringify({name,bride_name,groom_name,starts_on,ends_on})});
+ await loadLiveWorkspace();
+});
+document.getElementById('newHotelBtn').onclick=()=>liveAction(async()=>{
+ const name=promptRequired('Hotel name');if(!name)return;
+ const address=promptRequired('Hotel address')||'';
+ const phone=promptRequired('Hotel phone (optional)')||'';
+ await apiRequest('/api/hotels',{method:'POST',body:JSON.stringify({name,address,phone})});
+ alert('Hotel saved. Link it to the selected event to allocate rooms.');
+ await loadLiveWorkspace();
+});
+document.getElementById('newRoomBtn').onclick=()=>liveAction(async()=>{
+ if(!liveHotels.length){alert('Add a hotel first.');return}
+ const hotel=liveHotels.find(h=>h.id===promptRequired('Enter hotel ID:\n'+liveHotels.map(h=>h.name+' — '+h.id).join('\n')));if(!hotel)return;
+ const room_number=promptRequired('Room number');if(!room_number)return;
+ const floor=promptRequired('Floor (optional)')||'';
+ const capacity=Number(promptRequired('Room capacity','2'));if(!Number.isInteger(capacity)||capacity<1)throw new Error('Capacity must be a positive whole number');
+ await apiRequest('/api/hotels/'+hotel.id+'/rooms',{method:'POST',body:JSON.stringify({room_number,floor,capacity})});
+ alert('Room saved.');await refreshLiveDashboard();
+});
+document.getElementById('linkHotelBtn').onclick=()=>liveAction(async()=>{
+ if(!currentEventId)throw new Error('Create or select an event first.');
+ if(!liveHotels.length)throw new Error('Add a hotel first.');
+ const hotel=liveHotels.find(h=>h.id===promptRequired('Enter hotel ID to link:\n'+liveHotels.map(h=>h.name+' — '+h.id).join('\n')));if(!hotel)return;
+ await apiRequest('/api/events/'+currentEventId+'/hotels',{method:'POST',body:JSON.stringify({hotel_id:hotel.id})});
+ await refreshLiveDashboard();alert('Hotel linked to event.');
+});
+document.getElementById('logoutBtn').onclick=()=>{apiToken='';sessionStorage.removeItem(authTokenKey);currentUser=null;liveEvents=[];liveHotels=[];showAuth('You have signed out.',false)};
+let liveHotels=[];
+async function loadLiveWorkspace(){
+ try{
+  const me=await apiRequest('/api/me');currentUser=me.user;
+  liveEvents=await apiRequest('/api/events');liveHotels=await apiRequest('/api/hotels');
+  const select=document.querySelector('.eventselect');select.innerHTML='';
+  liveEvents.forEach(ev=>{const o=document.createElement('option');o.value=ev.id;o.textContent=ev.name;select.appendChild(o)});
+  const profile=document.querySelector('.profile');if(profile)profile.innerHTML='<div class="avatar">'+escapeText((currentUser.name||'E').slice(0,1).toUpperCase())+'</div><div><b>'+escapeText(currentUser.name)+'</b><span>Event Organizer</span></div>';
+  document.querySelector('.workspace b').textContent=currentUser.name;
+  if(!liveEvents.length){
+   currentEventId='';select.innerHTML='<option value="">No events yet</option>';
+   document.querySelector('.footer').textContent='EVENTSTAY · CREATE YOUR FIRST EVENT';
+   document.getElementById('newEventBtn').focus();
+   document.querySelector('.sub').textContent='Your account is ready. Create an event to begin.';
+   document.getElementById('guestRows').innerHTML='<tr><td colspan="7">Create an event to add guests.</td></tr>';
+   return;
+  }
+  currentEventId=liveEvents[0].id;select.value=currentEventId;
+  await refreshLiveDashboard();
+ }catch(err){document.getElementById('authMessage').textContent=err.message;showAuth(err.message,false)}
+}
+async function refreshLiveDashboard(){
+ if(!currentEventId)return;
+ const [stats,guests,linkedHotels,allocations]=await Promise.all([
+  apiRequest('/api/dashboard/'+currentEventId),
+  apiRequest('/api/events/'+currentEventId+'/guests'),
+  apiRequest('/api/events/'+currentEventId+'/hotels'),
+  apiRequest('/api/allocations')
+ ]);
+ const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=String(value)};
+ set('allocated',stats.people_count||0);set('checkedin',stats.checked_in||0);
+ const roomSets=await Promise.all(linkedHotels.map(h=>apiRequest('/api/hotels/'+h.id+'/rooms')));
+ const rooms=roomSets.flat();set('totalRooms',rooms.length);
+ const totalCapacity=rooms.reduce((n,r)=>n+Number(r.capacity),0);
+ const assigned=allocations.filter(a=>linkedHotels.some(h=>h.id===a.hotel_id)||a.guest_name).reduce((n,a)=>n+Number(a.guest_count),0);
+ const avail=document.querySelector('#totalRooms')?.closest('.stat')?.parentElement?.querySelectorAll('.stat .value')[3];if(avail)avail.textContent=Math.max(0,totalCapacity-assigned);
+ const body=document.getElementById('guestRows');body.innerHTML='';
+ guests.forEach(g=>{
+  const a=allocations.find(x=>x.guest_id===g.id);
+  const tr=document.createElement('tr');
+  const td=(v)=>{const x=document.createElement('td');x.textContent=v;return x};
+  const name=td(g.name);name.innerHTML='<div class="guest"><div class="miniavatar">'+escapeText(g.name.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase())+'</div><b>'+escapeText(g.name)+'</b></div>';
+  tr.append(name,td(g.side),td(a?(a.hotel_name+' · '+a.room_number):'Not allocated'),td(g.guest_count),td(a?.check_in||'—'),td(a?.status||'Expected'));
+  const actions=td('');if(g.phone){const link=document.createElement('a');link.className='btn primary';link.textContent='WhatsApp';link.target='_blank';link.rel='noopener';link.href='https://wa.me/'+g.phone.replace(/\D/g,'')+'?text='+encodeURIComponent('Hello '+g.name+', your accommodation details will be shared by the event organizer.');actions.appendChild(link)}tr.append(actions);body.appendChild(tr);
+ });
+ const panel=document.querySelector('#hotels');panel.querySelectorAll('.hotelrow').forEach(r=>r.remove());
+ linkedHotels.forEach((hotel,i)=>{
+  const rs=roomSets[i],cap=rs.reduce((n,r)=>n+Number(r.capacity),0);
+  const row=document.createElement('div');row.className='hotelrow';
+  row.innerHTML='<div class="hotelbadge">'+escapeText(hotel.name.slice(0,2).toUpperCase())+'</div><div class="hotelinfo"><b>'+escapeText(hotel.name)+'</b><small>'+escapeText(hotel.address||'Address not added')+'</small></div><div class="occupancy"><div class="bar"><i style="width:0%"></i></div><small>'+rs.length+' rooms · '+cap+' beds</small></div><span class="status">Linked</span>';
+  panel.insertBefore(row,panel.querySelector('.panelhead[style]'));
+ });
+ document.querySelector('.footer').textContent='EVENTSTAY · LIVE DATABASE · '+currentUser.name.toUpperCase();
+}
+document.querySelector('.eventselect').onchange=async e=>{currentEventId=e.target.value;await liveAction(refreshLiveDashboard)};
+async function addGuest(){
+ if(!currentEventId){alert('Create an event first.');return}
+ const name=document.getElementById('guestName').value.trim(),phone=document.getElementById('guestPhone').value.trim();
+ const guest_count=Math.max(1,Math.min(100,Number(document.getElementById('guestCount').value)||1));
+ if(!name||phone.replace(/\D/g,'').length<10){alert('Enter a guest name and valid phone number.');return}
+ const payload={name,phone,side:document.getElementById('guestSide').value,guest_count,adult_count:guest_count,child_count:0,address:document.getElementById('hotelAddress').value.trim()};
+ try{
+  const saved=await apiRequest('/api/events/'+currentEventId+'/guests',{method:'POST',body:JSON.stringify(payload)});
+  closeModal();['guestName','guestPhone','hotelAddress','venueAddress'].forEach(id=>document.getElementById(id).value='');
+  await refreshLiveDashboard();
+  alert('Guest saved to your EventStay account. QR pass token was created securely on the server.');
+ }catch(e){alert(e.message)}
+}
+if(EVENTSTAY_API_BASE){document.querySelectorAll('.stat .value').forEach(el=>el.textContent='—');if(apiToken)loadLiveWorkspace();else showAuth('Sign in to load your live workspace.',false)}
+
 </script>
 </body></html>
