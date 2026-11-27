@@ -554,7 +554,7 @@ if(menuToggle&&sideMenu){
 
 
 // EventStay API foundation. Set EVENTSTAY_API_BASE in api-config.js after backend deployment.
-const EVENTSTAY_API_BASE=(window.EVENTSTAY_API_BASE||'').replace(/\\/$/,'');
+const EVENTSTAY_API_BASE=(window.EVENTSTAY_API_BASE||'').replace(/\/$/,'');
 const authTokenKey='eventstay-access-token';
 let apiToken=sessionStorage.getItem(authTokenKey)||'';
 let currentUser=null;
