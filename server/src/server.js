@@ -75,15 +75,25 @@ app.post("/api/allocations",wrap(async(req,res)=>{
 }));
 app.get("/api/allocations",wrap(async(req,res)=>{const {rows}=await query("SELECT a.*,g.name guest_name,g.event_id,r.room_number,h.id hotel_id,h.name hotel_name,h.address hotel_address FROM allocations a JOIN guests g ON g.id=a.guest_id JOIN events e ON e.id=g.event_id JOIN rooms r ON r.id=a.room_id JOIN hotels h ON h.id=r.hotel_id WHERE e.organizer_id=$1 ORDER BY a.check_in",[req.user.sub]);res.json(rows)}));
 app.post("/api/check-in/verify",wrap(async(req,res)=>{
- const s=z.object({token:z.string().min(20)}).parse(req.body);
+ const s=z.object({token:z.string().min(20)}).strict().parse(req.body);
  const hash=crypto.createHash("sha256").update(s.token).digest("hex");
- const {rows}=await query("SELECT q.guest_id,g.name,a.id allocation_id,a.status,a.check_in,a.check_out FROM qr_passes q JOIN guests g ON g.id=q.guest_id JOIN events e ON e.id=g.event_id LEFT JOIN allocations a ON a.guest_id=g.id AND a.status IN ('reserved','checked_in') WHERE q.token_hash=$1 AND q.active=true AND e.organizer_id=$2 ORDER BY a.created_at DESC",[hash,req.user.sub]);
+ const {rows}=await query("SELECT q.guest_id,g.name,g.phone,g.guest_count,a.id allocation_id,a.status,a.check_in,a.check_out,r.room_number,h.name hotel_name,h.address hotel_address FROM qr_passes q JOIN guests g ON g.id=q.guest_id JOIN events e ON e.id=g.event_id LEFT JOIN allocations a ON a.guest_id=g.id AND a.status IN ('reserved','checked_in') LEFT JOIN rooms r ON r.id=a.room_id LEFT JOIN hotels h ON h.id=r.hotel_id WHERE q.token_hash=$1 AND q.active=true AND e.organizer_id=$2 ORDER BY a.created_at DESC",[hash,req.user.sub]);
  if(!rows.length)return res.status(404).json({error:"Invalid or inactive QR pass"});
  const matches=rows.filter(x=>x.allocation_id);if(!matches.length)return res.status(409).json({error:"Guest has no active room allocation"});
- if(matches.length>1)return res.status(409).json({error:"This guest has multiple active room allocations. Select a room allocation before check-in.",allocations:matches.map(x=>({id:x.allocation_id,status:x.status,check_in:x.check_in,check_out:x.check_out}))});
+ if(matches.length>1)return res.status(409).json({error:"This guest has multiple active room allocations. Multi-room QR confirmation needs allocation selection.",allocations:matches.map(x=>({id:x.allocation_id,room_number:x.room_number,hotel_name:x.hotel_name,status:x.status,check_in:x.check_in,check_out:x.check_out}))});
  const a=matches[0];
- if(a.status==="checked_in")return res.status(409).json({error:"Guest is already checked in"});
- const c=await pool.connect();try{await c.query("BEGIN");const changed=await c.query("UPDATE allocations SET status='checked_in' WHERE id=$1 AND status='reserved' RETURNING id",[a.allocation_id]);if(!changed.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"This allocation is no longer available for check-in"})}await c.query("INSERT INTO checkins(allocation_id,action,recorded_by) VALUES($1,'check_in',$2)",[a.allocation_id,req.user.sub]);await c.query("COMMIT");res.json({ok:true,guest:a.name,allocation_id:a.allocation_id,status:"checked_in"})}catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
+ if(a.status==="checked_in")return res.status(409).json({error:"Guest is already checked in",guest:a.name,allocation:{id:a.allocation_id,room_number:a.room_number,hotel_name:a.hotel_name,status:a.status}});
+ res.json({ok:true,verified:true,guest:{id:a.guest_id,name:a.name,phone:a.phone,guest_count:a.guest_count},allocation:{id:a.allocation_id,room_number:a.room_number,hotel_name:a.hotel_name,hotel_address:a.hotel_address,check_in:a.check_in,check_out:a.check_out,status:a.status},message:"Booking verified. Confirm check-in before handing over room keys."});
+}));
+app.post("/api/check-in/:allocationId/confirm",wrap(async(req,res)=>{
+ const c=await pool.connect();
+ try{
+  await c.query("BEGIN");
+  const {rows}=await c.query("UPDATE allocations a SET status='checked_in' FROM guests g JOIN events e ON e.id=g.event_id WHERE a.id=$1 AND a.guest_id=g.id AND e.organizer_id=$2 AND a.status='reserved' RETURNING a.*",[req.params.allocationId,req.user.sub]);
+  if(!rows[0]){await c.query("ROLLBACK");return res.status(409).json({error:"Allocation is not available for check-in. It may already be checked in or cancelled."})}
+  await c.query("INSERT INTO checkins(allocation_id,action,recorded_by) VALUES($1,'check_in',$2)",[rows[0].id,req.user.sub]);
+  await c.query("COMMIT");res.json({ok:true,allocation:rows[0],message:"Check-in confirmed. Room key can now be handed over."});
+ }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
 }));
 app.post("/api/check-in/:allocationId/checkout",wrap(async(req,res)=>{
  const c=await pool.connect();
