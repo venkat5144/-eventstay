@@ -15,6 +15,20 @@ export async function initDb() {
  CREATE TABLE IF NOT EXISTS allocations (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE, room_id uuid NOT NULL REFERENCES rooms(id) ON DELETE CASCADE, check_in date, check_out date, guest_count integer NOT NULL DEFAULT 1 CHECK(guest_count > 0), status text NOT NULL DEFAULT 'reserved' CHECK(status IN ('reserved','checked_in','checked_out','cancelled')), created_at timestamptz NOT NULL DEFAULT now());
  CREATE TABLE IF NOT EXISTS qr_passes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_id uuid NOT NULL REFERENCES guests(id) ON DELETE CASCADE, token_hash text NOT NULL UNIQUE, active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now());
  CREATE TABLE IF NOT EXISTS checkins (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), allocation_id uuid NOT NULL REFERENCES allocations(id) ON DELETE CASCADE, action text NOT NULL CHECK(action IN ('check_in','check_out')), recorded_at timestamptz NOT NULL DEFAULT now(), recorded_by uuid REFERENCES organizers(id));
+ CREATE TABLE IF NOT EXISTS wedding_contacts (
+   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+   event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+   name text NOT NULL,
+   phone text NOT NULL,
+   address text,
+   side text NOT NULL DEFAULT 'Other',
+   photo_data text,
+   status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent')),
+   sent_at timestamptz,
+   created_at timestamptz NOT NULL DEFAULT now(),
+   updated_at timestamptz NOT NULL DEFAULT now()
+ );
+ CREATE INDEX IF NOT EXISTS wedding_contacts_event_idx ON wedding_contacts(event_id,created_at DESC);
  CREATE INDEX IF NOT EXISTS events_organizer_idx ON events(organizer_id);
  CREATE INDEX IF NOT EXISTS guests_event_idx ON guests(event_id);
  CREATE INDEX IF NOT EXISTS allocations_room_idx ON allocations(room_id);
