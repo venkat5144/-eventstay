@@ -20,7 +20,10 @@ jobs:
           cache: npm
           cache-dependency-path: server/package.json
       - run: npm install
-      - name: Check JavaScript syntax
+      - name: Check API JavaScript syntax
         run: |
           node --check src/server.js
           node --check src/db.js
+      - name: Check frontend JavaScript syntax
+        working-directory: .
+        run: node scripts/check-inline-js.mjs
