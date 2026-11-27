@@ -146,8 +146,7 @@ app.delete("/api/hotels/:hotelId/members/:userId",wrap(async(req,res)=>{
   const owns=await c.query("SELECT id FROM hotels WHERE id=$1 AND organizer_id=$2 FOR UPDATE",[req.params.hotelId,req.user.sub]);if(!owns.rowCount){await c.query("ROLLBACK");return res.status(404).json({error:"Hotel not found"})}
   const removed=await c.query("DELETE FROM hotel_memberships hm USING organizers o WHERE hm.hotel_id=$1 AND hm.user_id=$2 AND o.id=hm.user_id AND o.role IN ('hotel_owner','hotel_staff') RETURNING hm.user_id",[req.params.hotelId,req.params.userId]);
   if(!removed.rowCount){await c.query("ROLLBACK");return res.status(404).json({error:"Hotel member not found"})}
-  const remaining=await c.query("SELECT 1 FROM hotel_memberships WHERE user_id=$1",[req.params.userId]);
-  if(!remaining.rowCount)await c.query("DELETE FROM organizers WHERE id=$1",[req.params.userId]);
+  // Retain the login identity for historical check-in/audit references; without a membership it has no hotel access.
   await c.query("INSERT INTO audit_logs(organizer_id,actor_id,action,entity_type,entity_id,details) VALUES($1,$2,'hotel_member_removed','hotel',$3,jsonb_build_object('member_id',$4::text))",[req.user.sub,req.user.sub,req.params.hotelId,req.params.userId]);
   await c.query("COMMIT");res.status(204).end();
  }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
