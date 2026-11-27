@@ -682,20 +682,20 @@ async function refreshLiveDashboard(){
   apiRequest('/api/allocations')
  ]);
  const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=String(value)};
- set('allocated',stats.people_count||0);set('checkedin',stats.checked_in||0);
+ const eventAllocations=allocations.filter(a=>a.event_id===currentEventId);set('allocated',eventAllocations.reduce((n,a)=>n+Number(a.guest_count),0));set('checkedin',stats.checked_in||0);
  const roomSets=await Promise.all(linkedHotels.map(h=>apiRequest('/api/hotels/'+h.id+'/rooms')));
  const rooms=roomSets.flat();set('totalRooms',rooms.length);
  const totalCapacity=rooms.reduce((n,r)=>n+Number(r.capacity),0);
- const assigned=allocations.filter(a=>linkedHotels.some(h=>h.id===a.hotel_id)||a.guest_name).reduce((n,a)=>n+Number(a.guest_count),0);
+ const assigned=eventAllocations.reduce((n,a)=>n+Number(a.guest_count),0);
  const avail=document.querySelector('#totalRooms')?.closest('.stat')?.parentElement?.querySelectorAll('.stat .value')[3];if(avail)avail.textContent=Math.max(0,totalCapacity-assigned);
  const body=document.getElementById('guestRows');body.innerHTML='';
  guests.forEach(g=>{
-  const a=allocations.find(x=>x.guest_id===g.id);
+  const a=eventAllocations.find(x=>x.guest_id===g.id);
   const tr=document.createElement('tr');
   const td=(v)=>{const x=document.createElement('td');x.textContent=v;return x};
   const name=td(g.name);name.innerHTML='<div class="guest"><div class="miniavatar">'+escapeText(g.name.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase())+'</div><b>'+escapeText(g.name)+'</b></div>';
   tr.append(name,td(g.side),td(a?(a.hotel_name+' · '+a.room_number):'Not allocated'),td(g.guest_count),td(a?.check_in||'—'),td(a?.status||'Expected'));
-  const actions=td('');if(g.phone){const link=document.createElement('a');link.className='btn primary';link.textContent='WhatsApp';link.target='_blank';link.rel='noopener';link.href='https://wa.me/'+g.phone.replace(/\D/g,'')+'?text='+encodeURIComponent('Hello '+g.name+', your accommodation details will be shared by the event organizer.');actions.appendChild(link)}tr.append(actions);body.appendChild(tr);
+  const actions=td('');if(g.phone){const link=document.createElement('a');link.className='btn primary';link.textContent=a?'WhatsApp details':'WhatsApp';link.target='_blank';link.rel='noopener';const message=a?'Hello '+g.name+', your accommodation is confirmed. Hotel: '+a.hotel_name+'. Address: '+(a.hotel_address||'Please contact the organizer for the address')+'. Room: '+a.room_number+'. Guests: '+a.guest_count+'. Check-in: '+a.check_in+'. Check-out: '+a.check_out+'.':'Hello '+g.name+', your accommodation details are being arranged. We will share the hotel and room details shortly.';link.href='https://wa.me/'+g.phone.replace(/\D/g,'')+'?text='+encodeURIComponent(message);actions.appendChild(link)}tr.append(actions);body.appendChild(tr);
  });
  const panel=document.querySelector('#hotels');panel.querySelectorAll('.hotelrow').forEach(r=>r.remove());
  linkedHotels.forEach((hotel,i)=>{
