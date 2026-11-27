@@ -82,6 +82,8 @@ export async function initDb() {
  ALTER TABLE guests ADD COLUMN IF NOT EXISTS family_group_id uuid REFERENCES family_groups(id) ON DELETE SET NULL;
  ALTER TABLE rooms ADD COLUMN IF NOT EXISTS building_id uuid REFERENCES buildings(id) ON DELETE SET NULL;
  ALTER TABLE rooms ADD COLUMN IF NOT EXISTS floor_id uuid REFERENCES floors(id) ON DELETE SET NULL;
+ ALTER TABLE hotel_memberships DROP CONSTRAINT IF EXISTS hotel_memberships_role_check;
+ ALTER TABLE hotel_memberships ADD CONSTRAINT hotel_memberships_role_check CHECK(role IN ('owner','manager','front_desk'));
  CREATE INDEX IF NOT EXISTS hotel_memberships_user_idx ON hotel_memberships(user_id);
  CREATE INDEX IF NOT EXISTS family_groups_event_idx ON family_groups(event_id);
  CREATE INDEX IF NOT EXISTS audit_logs_tenant_idx ON audit_logs(organizer_id,created_at DESC);
