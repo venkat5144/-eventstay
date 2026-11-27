@@ -509,9 +509,19 @@ function renderInviteContacts(){
  if(!inviteContacts.length){body.innerHTML='<tr><td colspan="6" style="color:#857875;padding:20px 10px">No invitation contacts added yet.</td></tr>';return}
  inviteContacts.forEach(c=>{
   const tr=document.createElement('tr');
-  const avatar=c.photo_data?'<img class="invite-photo" src="'+c.photo_data+'" alt="">':'<span class="miniavatar" style="display:inline-grid;vertical-align:middle;margin-right:8px">'+escapeText(c.name.split(/\\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase())+'</span>';
-  tr.innerHTML='<td><b>'+avatar+escapeText(c.name)+'</b></td><td>'+escapeText(c.phone)+'</td><td style="white-space:normal;min-width:150px">'+escapeText(c.address||'—')+'</td><td>'+escapeText(c.side)+'</td><td><span class="tag '+(c.status==='sent'?'':'pending')+'">'+(c.status==='sent'?'Sent':'Pending')+'</span></td><td><div class="invite-actions"><a class="btn primary" style="text-decoration:none;padding:7px 9px" target="_blank" rel="noopener" href="'+inviteWhatsApp(c)+'">WhatsApp</a>'+(c.status==='sent'?'':'<button class="btn" style="padding:7px 9px" onclick="markInviteSent(\\''+String(c.id)+'\\')">Mark sent</button>')+'<button class="btn" style="padding:7px 9px" onclick="deleteInviteContact(\\''+String(c.id)+'\\')">Delete</button></div></td>';
-  body.appendChild(tr);
+  const nameCell=document.createElement('td');
+  const name=document.createElement('b');
+  if(c.photo_data){const img=document.createElement('img');img.className='invite-photo';img.src=c.photo_data;img.alt='';name.appendChild(img)}
+  else{const avatar=document.createElement('span');avatar.className='miniavatar';avatar.style.cssText='display:inline-grid;vertical-align:middle;margin-right:8px';avatar.textContent=(c.name||'').split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase();name.appendChild(avatar)}
+  name.appendChild(document.createTextNode(c.name||''));nameCell.appendChild(name);tr.appendChild(nameCell);
+  const cell=value=>{const td=document.createElement('td');td.textContent=value||'—';return td};
+  tr.appendChild(cell(c.phone));const address=cell(c.address);address.style.cssText='white-space:normal;min-width:150px';tr.appendChild(address);tr.appendChild(cell(c.side));
+  const status=document.createElement('td'),tag=document.createElement('span');tag.className='tag '+(c.status==='sent'?'':'pending');tag.textContent=c.status==='sent'?'Sent':'Pending';status.appendChild(tag);tr.appendChild(status);
+  const actions=document.createElement('td'),wrap=document.createElement('div');wrap.className='invite-actions';
+  const wa=document.createElement('a');wa.className='btn primary';wa.style.cssText='text-decoration:none;padding:7px 9px';wa.target='_blank';wa.rel='noopener';wa.href=inviteWhatsApp(c);wa.textContent='WhatsApp';wrap.appendChild(wa);
+  if(c.status!=='sent'){const mark=document.createElement('button');mark.className='btn';mark.style.padding='7px 9px';mark.textContent='Mark sent';mark.addEventListener('click',()=>markInviteSent(String(c.id)));wrap.appendChild(mark)}
+  const del=document.createElement('button');del.className='btn';del.style.padding='7px 9px';del.textContent='Delete';del.addEventListener('click',()=>deleteInviteContact(String(c.id)));wrap.appendChild(del);
+  actions.appendChild(wrap);tr.appendChild(actions);body.appendChild(tr);
  });
 }
 async function deleteInviteContact(id){
