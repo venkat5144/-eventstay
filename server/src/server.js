@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import rateLimit from "express-rate-limit";
 import cors from "cors";
 import helmet from "helmet";
 import bcrypt from "bcryptjs";
@@ -18,14 +19,15 @@ const auth=(req,res,next)=>{try{const t=(req.headers.authorization||"").replace(
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
 const idSchema=z.string().uuid();
 app.get("/api/health",wrap(async(req,res)=>{await query("SELECT 1");res.json({ok:true,service:"eventstay-api",database:"connected"})}));
-app.post("/api/auth/register",wrap(async(req,res)=>{
+const authLimiter=rateLimit({windowMs:15*60*1000,limit:10,standardHeaders:"draft-7",legacyHeaders:false,message:{error:"Too many authentication attempts. Try again later."}});
+app.post("/api/auth/register",authLimiter,wrap(async(req,res)=>{
  const s=z.object({name:z.string().trim().min(2).max(120),email:z.string().email().max(254),password:z.string().min(10).max(128)}).strict().parse(req.body);
  const hash=await bcrypt.hash(s.password,12);
  const {rows}=await query("INSERT INTO organizers(name,email,password_hash,role) VALUES($1,$2,$3,$4) RETURNING id,name,email,role",[s.name,s.email.toLowerCase(),hash,"organizer"]);
  const user=rows[0],token=jwt.sign({sub:user.id,role:user.role},secret,{expiresIn:"12h"});
  res.status(201).json({user,token});
 }));
-app.post("/api/auth/login",wrap(async(req,res)=>{
+app.post("/api/auth/login",authLimiter,wrap(async(req,res)=>{
  const s=z.object({email:z.string().email(),password:z.string()}).parse(req.body);
  const {rows}=await query("SELECT id,name,email,password_hash,role FROM organizers WHERE email=$1",[s.email.toLowerCase()]);
  if(!rows[0]||!await bcrypt.compare(s.password,rows[0].password_hash))return res.status(401).json({error:"Invalid email or password"});
