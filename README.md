@@ -4,7 +4,7 @@ EventStay manages wedding events, hotels, rooms, guests, invitations, room alloc
 
 ## Project status
 
-The repository started as a static frontend prototype. A PostgreSQL/Express backend foundation is now being added. The frontend has **not yet been migrated to use the API**, and the application is not production-ready.
+The repository began as a static prototype. It now has an Express/PostgreSQL API and an initial frontend connection for organizer authentication, event/hotel/room creation and guest registration. This is an integration stage, not a production-ready release.
 
 ## Stack
 
@@ -49,13 +49,13 @@ Authenticated routes require `Authorization: Bearer <token>`.
 
 ## Remaining work before production
 
-- Connect every frontend screen to authenticated API calls; remove localStorage as the source of truth.
-- Add event/hotel/guest CRUD, edits and deletion with authorization checks.
+- Finish connecting every frontend screen to authenticated API calls; remove remaining localStorage demo/invitation storage as the source of truth.
+- Add event/hotel/guest CRUD, edits and deletion with authorization checks; replace prompt-based initial management actions with polished forms.
 - Add hotel staff membership and proper tenant permissions.
 - Add guest photo upload/storage, invitation templates and invitation delivery integration.
 - Add QR token rotation/revocation and robust check-in allocation selection.
 - Add room/floor/building UX, reports, pagination, audit log and export.
-- Add automated tests, migrations, rate limits, security review, backups and deployment configuration.
+- Add automated API/database tests, migrations, security review, backups and deployment configuration.
 - Test mobile browsers and complete end-to-end workflows.
 
 ## GitHub Pages
