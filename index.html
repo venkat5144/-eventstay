@@ -732,7 +732,7 @@ async function addGuest(){
   const saved=await apiRequest('/api/events/'+currentEventId+'/guests',{method:'POST',body:JSON.stringify(payload)});
   closeModal();['guestName','guestPhone','hotelAddress','venueAddress'].forEach(id=>document.getElementById(id).value='');
   await refreshLiveDashboard();
-  alert('Guest saved to your EventStay account. QR pass token was created securely on the server.');
+  const passUrl='https://venkat5144.github.io/-eventstay/guest-pass.html?token='+encodeURIComponent(saved.qr_token);const message='Hello '+name+', your EventStay guest pass is ready. Open this link to view your booking and QR code: '+passUrl;if(confirm('Guest saved. Open WhatsApp to share the secure guest pass?'))window.open('https://wa.me/'+phone.replace(/\\D/g,'')+'?text='+encodeURIComponent(message),'_blank','noopener');else{try{await navigator.clipboard.writeText(passUrl);alert('Guest pass link copied:\\n'+passUrl)}catch{prompt('Copy this guest pass link:',passUrl)}}
  }catch(e){alert(e.message)}
 }
 if(EVENTSTAY_API_BASE){document.querySelectorAll('.stat .value').forEach(el=>el.textContent='—');if(apiToken)loadLiveWorkspace();else showAuth('Sign in to load your live workspace.',false)}
