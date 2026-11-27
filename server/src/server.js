@@ -72,7 +72,7 @@ app.post("/api/allocations",wrap(async(req,res)=>{
  const {rows}=await c.query("INSERT INTO allocations(guest_id,room_id,check_in,check_out,guest_count) VALUES($1,$2,$3,$4,$5) RETURNING *",[s.guest_id,s.room_id,s.check_in,s.check_out,s.guest_count]);
  await c.query("COMMIT");res.status(201).json(rows[0]);
  }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
-});
+}));
 app.get("/api/allocations",wrap(async(req,res)=>{const {rows}=await query("SELECT a.*,g.name guest_name,g.event_id,r.room_number,h.id hotel_id,h.name hotel_name,h.address hotel_address FROM allocations a JOIN guests g ON g.id=a.guest_id JOIN events e ON e.id=g.event_id JOIN rooms r ON r.id=a.room_id JOIN hotels h ON h.id=r.hotel_id WHERE e.organizer_id=$1 ORDER BY a.check_in",[req.user.sub]);res.json(rows)}));
 app.post("/api/check-in/verify",wrap(async(req,res)=>{
  const s=z.object({token:z.string().min(20)}).parse(req.body);
