@@ -296,12 +296,30 @@ body{background:var(--paper);color:var(--ink)}
 .invite-actions{display:flex;gap:6px;align-items:center}
 @media(max-width:700px){.invite-form-grid{grid-template-columns:1fr}.invite-stats .stat{padding:10px 8px}.invite-stats .value{font-size:23px}}
 
+
+/* Mobile navigation: collapsed until the EventStay mark is tapped. */
+.brandmark{border:0;cursor:pointer}
+@media(max-width:700px){
+ .side{position:relative;z-index:20;padding:18px 16px;display:block}
+ .brand{display:flex;align-items:center;gap:13px;padding:0}
+ .brandmark{width:42px;height:42px;flex:0 0 42px;border-radius:50%;font:700 19px 'DM Sans',sans-serif}
+ .workspace,.navlabel,.side .nav,.sidebottom{display:none}
+ .side.menu-open .workspace{display:block;margin:16px 0 12px}
+ .side.menu-open .navlabel{display:block;margin:15px 0 7px;padding:0 3px}
+ .side.menu-open .nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:0}
+ .side.menu-open .nav a{display:flex;white-space:normal;min-height:52px;margin:0;padding:11px 10px;border:1px solid #ffffff25;border-radius:9px;font-size:12px}
+ .side.menu-open .sidebottom{display:block;margin-top:15px}
+ .side.menu-open .nav a.active{background:#60464b}
+ .side.menu-open .nav a:hover{background:#60464b}
+}
+@media(min-width:701px){.brandmark{cursor:default}}
+
 </style>
 </head>
 <body>
 <div class="shell">
 <aside class="side">
-<div class="brand"><div class="brandmark">E</div>eventstay</div>
+<div class="brand"><button class="brandmark" id="menuToggle" type="button" aria-label="Open navigation menu" aria-expanded="false">E</button><span>eventstay</span></div>
 <div class="workspace">WORKSPACE<b>Royal Weddings Co.⌄</b></div>
 <div class="navlabel">WORKSPACE</div><nav class="nav">
 <a class="active" href="#"><span class="ico">▦</span>Overview</a><a href="#hotels"><span class="ico">⌂</span>Hotels & rooms</a><a href="#guests"><span class="ico">♙</span>Guests & families</a><a href="#allocation"><span class="ico">▤</span>Room allocation</a><a href="#activity"><span class="ico">▧</span>QR check-in</a>
@@ -493,5 +511,26 @@ function renderInviteContacts(){
 renderInviteContacts();
 
 document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
+
+// Mobile menu toggle: tap the EventStay E mark to reveal navigation.
+const menuToggle=document.getElementById('menuToggle');
+const sideMenu=document.querySelector('.side');
+if(menuToggle&&sideMenu){
+ menuToggle.addEventListener('click',()=>{
+  if(window.matchMedia('(max-width:700px)').matches){
+   const open=sideMenu.classList.toggle('menu-open');
+   menuToggle.setAttribute('aria-expanded',String(open));
+   menuToggle.setAttribute('aria-label',open?'Close navigation menu':'Open navigation menu');
+  }
+ });
+ sideMenu.querySelectorAll('.nav a').forEach(link=>link.addEventListener('click',()=>{
+  if(window.matchMedia('(max-width:700px)').matches){
+   sideMenu.classList.remove('menu-open');
+   menuToggle.setAttribute('aria-expanded','false');
+   menuToggle.setAttribute('aria-label','Open navigation menu');
+  }
+ }));
+}
+
 </script>
 </body></html>
