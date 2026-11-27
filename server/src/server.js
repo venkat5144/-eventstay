@@ -73,7 +73,7 @@ app.post("/api/allocations",wrap(async(req,res)=>{
  await c.query("COMMIT");res.status(201).json(rows[0]);
  }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
 });
-app.get("/api/allocations",wrap(async(req,res)=>{const {rows}=await query("SELECT a.*,g.name guest_name,r.room_number,h.name hotel_name FROM allocations a JOIN guests g ON g.id=a.guest_id JOIN events e ON e.id=g.event_id JOIN rooms r ON r.id=a.room_id JOIN hotels h ON h.id=r.hotel_id WHERE e.organizer_id=$1 ORDER BY a.check_in",[req.user.sub]);res.json(rows)}));
+app.get("/api/allocations",wrap(async(req,res)=>{const {rows}=await query("SELECT a.*,g.name guest_name,g.event_id,r.room_number,h.id hotel_id,h.name hotel_name FROM allocations a JOIN guests g ON g.id=a.guest_id JOIN events e ON e.id=g.event_id JOIN rooms r ON r.id=a.room_id JOIN hotels h ON h.id=r.hotel_id WHERE e.organizer_id=$1 ORDER BY a.check_in",[req.user.sub]);res.json(rows)}));
 app.post("/api/check-in/verify",wrap(async(req,res)=>{
  const s=z.object({token:z.string().min(20)}).parse(req.body);
  const hash=crypto.createHash("sha256").update(s.token).digest("hex");
