@@ -18,5 +18,58 @@ export async function initDb() {
  CREATE INDEX IF NOT EXISTS events_organizer_idx ON events(organizer_id);
  CREATE INDEX IF NOT EXISTS guests_event_idx ON guests(event_id);
  CREATE INDEX IF NOT EXISTS allocations_room_idx ON allocations(room_id);
- `);
+ 
+ -- Multi-property structure and event-to-hotel links.
+ CREATE TABLE IF NOT EXISTS hotel_memberships (
+   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+   hotel_id uuid NOT NULL REFERENCES hotels(id) ON DELETE CASCADE,
+   user_id uuid NOT NULL REFERENCES organizers(id) ON DELETE CASCADE,
+   role text NOT NULL CHECK(role IN ('owner','manager','front_desk')),
+   created_at timestamptz NOT NULL DEFAULT now(),
+   UNIQUE(hotel_id,user_id)
+ );
+ CREATE TABLE IF NOT EXISTS buildings (
+   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+   hotel_id uuid NOT NULL REFERENCES hotels(id) ON DELETE CASCADE,
+   name text NOT NULL,
+   UNIQUE(hotel_id,name)
+ );
+ CREATE TABLE IF NOT EXISTS floors (
+   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+   building_id uuid NOT NULL REFERENCES buildings(id) ON DELETE CASCADE,
+   name text NOT NULL,
+   UNIQUE(building_id,name)
+ );
+ CREATE TABLE IF NOT EXISTS event_hotels (
+   event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+   hotel_id uuid NOT NULL REFERENCES hotels(id) ON DELETE CASCADE,
+   created_at timestamptz NOT NULL DEFAULT now(),
+   PRIMARY KEY(event_id,hotel_id)
+ );
+ CREATE TABLE IF NOT EXISTS family_groups (
+   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+   event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+   name text NOT NULL,
+   side text NOT NULL DEFAULT 'Other',
+   created_at timestamptz NOT NULL DEFAULT now()
+ );
+ CREATE TABLE IF NOT EXISTS audit_logs (
+   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+   organizer_id uuid REFERENCES organizers(id) ON DELETE SET NULL,
+   actor_id uuid REFERENCES organizers(id) ON DELETE SET NULL,
+   action text NOT NULL,
+   entity_type text NOT NULL,
+   entity_id uuid,
+   details jsonb NOT NULL DEFAULT '{}'::jsonb,
+   created_at timestamptz NOT NULL DEFAULT now()
+ );
+ ALTER TABLE guests ADD COLUMN IF NOT EXISTS adult_count integer NOT NULL DEFAULT 1 CHECK(adult_count >= 0);
+ ALTER TABLE guests ADD COLUMN IF NOT EXISTS child_count integer NOT NULL DEFAULT 0 CHECK(child_count >= 0);
+ ALTER TABLE guests ADD COLUMN IF NOT EXISTS family_group_id uuid REFERENCES family_groups(id) ON DELETE SET NULL;
+ ALTER TABLE rooms ADD COLUMN IF NOT EXISTS building_id uuid REFERENCES buildings(id) ON DELETE SET NULL;
+ ALTER TABLE rooms ADD COLUMN IF NOT EXISTS floor_id uuid REFERENCES floors(id) ON DELETE SET NULL;
+ CREATE INDEX IF NOT EXISTS hotel_memberships_user_idx ON hotel_memberships(user_id);
+ CREATE INDEX IF NOT EXISTS family_groups_event_idx ON family_groups(event_id);
+ CREATE INDEX IF NOT EXISTS audit_logs_tenant_idx ON audit_logs(organizer_id,created_at DESC);
+  );
 }
