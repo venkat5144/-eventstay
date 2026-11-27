@@ -36,7 +36,8 @@
  const message=document.getElementById('message'),token=new URLSearchParams(location.search).get('token');
  const api=String(window.EVENTSTAY_API_BASE||'').replace(/\/$/,'');
  const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- if(!token){message.textContent='This pass link is incomplete.';message.classList.add('error');return}
+ if(!token){message.textContent='This pass link is incomplete. Open the full personal guest-pass link sent by your event organizer. Do not remove the ?token= part of the link.';message.classList.add('error');return}
+ if(!/^[a-f0-9]{64}$/i.test(token)){message.textContent='This guest-pass link is invalid. Ask your event organizer to send a fresh personal pass link.';message.classList.add('error');return}
  if(!api){message.textContent='The EventStay server is not connected yet. Please contact your event organizer.';message.classList.add('error');return}
  try{
   const response=await fetch(api+'/api/public/guest-pass/'+encodeURIComponent(token),{cache:'no-store'});
