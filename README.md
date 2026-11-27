@@ -1,19 +1,63 @@
-# EventStay
+# EventStay — Wedding & Accommodation Management
 
-EventStay is a multi-property event accommodation management dashboard.
+EventStay manages wedding events, hotels, rooms, guests, invitations, room allocation and QR-based check-in.
 
-## Current build
-- Responsive event overview dashboard
-- Hotel occupancy summary
-- Guest and family allocation table
-- Demo add-guest interaction
-- Quick-action placeholders for room allocation, QR check-in and WhatsApp
+## Project status
 
-## Run locally
-Open `index.html` in a browser. No build step is required.
+The repository started as a static frontend prototype. A PostgreSQL/Express backend foundation is now being added. The frontend has **not yet been migrated to use the API**, and the application is not production-ready.
+
+## Stack
+
+- Frontend: existing HTML/CSS/JavaScript prototype
+- API: Node.js 22, Express
+- Database: PostgreSQL 17
+- Authentication: bcrypt password hashing + short-lived JWT
+- Local orchestration: Docker Compose
+
+## Run the backend locally
+
+1. Install Docker Desktop and start it.
+2. Copy `.env.example` to `.env`.
+3. Set unique values for `POSTGRES_PASSWORD` and `JWT_SECRET` (at least 32 characters).
+4. Run:
+
+```bash
+docker compose up --build
+```
+
+The API listens on `http://localhost:5000`. PostgreSQL is exposed on host port `5433`.
+
+Health check: `GET http://localhost:5000/api/health`.
+
+The API creates its initial tables when it starts. Do not use the example secrets outside local development.
+
+## API foundation
+
+- `POST /api/auth/register`, `POST /api/auth/login`
+- `GET /api/me`
+- `GET/POST /api/events`
+- `GET/POST /api/hotels`
+- `GET/POST /api/hotels/:hotelId/rooms`
+- `GET/POST /api/events/:eventId/guests`
+- `PATCH /api/invitations/:id`
+- `GET /api/dashboard/:eventId`
+- `GET/POST /api/allocations`
+- `POST /api/check-in/verify`
+- `POST /api/check-in/:allocationId/checkout`
+
+Authenticated routes require `Authorization: Bearer <token>`.
+
+## Remaining work before production
+
+- Connect every frontend screen to authenticated API calls; remove localStorage as the source of truth.
+- Add event/hotel/guest CRUD, edits and deletion with authorization checks.
+- Add hotel staff membership and proper tenant permissions.
+- Add guest photo upload/storage, invitation templates and invitation delivery integration.
+- Add QR token rotation/revocation and robust check-in allocation selection.
+- Add room/floor/building UX, reports, pagination, audit log and export.
+- Add automated tests, migrations, rate limits, security review, backups and deployment configuration.
+- Test mobile browsers and complete end-to-end workflows.
 
 ## GitHub Pages
-In the repository, open **Settings → Pages**. Choose **Deploy from a branch**, select **main** and **/(root)**, then save.
 
-## Important
-This is the frontend prototype. The current guest form uses browser memory only and does not persist data. Authentication, tenant isolation, PostgreSQL storage, room-capacity validation, QR scanning, WhatsApp integration and production APIs are not implemented yet. Do not use the demo data for real guest operations.
+GitHub Pages can host only the static frontend. The API and PostgreSQL must be deployed separately. Never expose database credentials or JWT secrets in frontend files.
