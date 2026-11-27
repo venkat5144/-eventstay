@@ -71,5 +71,5 @@ export async function initDb() {
  CREATE INDEX IF NOT EXISTS hotel_memberships_user_idx ON hotel_memberships(user_id);
  CREATE INDEX IF NOT EXISTS family_groups_event_idx ON family_groups(event_id);
  CREATE INDEX IF NOT EXISTS audit_logs_tenant_idx ON audit_logs(organizer_id,created_at DESC);
-  );
+ `);
 }
