@@ -1,0 +1,13 @@
+{
+  "name": "eventstay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "neon:plan": "neon config plan",
+    "neon:deploy": "neon deploy"
+  },
+  "devDependencies": {
+    "@neon/config": "^1.0.0"
+  }
+}
