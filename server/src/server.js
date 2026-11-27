@@ -34,6 +34,31 @@ app.post("/api/auth/login",authLimiter,wrap(async(req,res)=>{
  const {password_hash,...user}=rows[0];res.json({user,token:jwt.sign({sub:user.id,role:user.role},secret,{expiresIn:"12h"})});
 }));
 app.get("/api/me",auth,wrap(async(req,res)=>{const {rows}=await query("SELECT id,name,email,role FROM organizers WHERE id=$1",[req.user.sub]);res.json({user:rows[0]||null})}));
+
+/* Public guest pass lookup: possession of the unguessable token grants read-only access. */
+const guestPassLimiter=rateLimit({windowMs:15*60*1000,limit:30,standardHeaders:"draft-7",legacyHeaders:false,message:{error:"Too many pass lookups. Try again later."}});
+app.get("/api/public/guest-pass/:token",guestPassLimiter,wrap(async(req,res)=>{
+ const token=String(req.params.token||"");
+ if(!/^[a-f0-9]{64}$/i.test(token))return res.status(404).json({error:"Pass not found or expired"});
+ const hash=crypto.createHash("sha256").update(token).digest("hex");
+ const {rows}=await query(`
+  SELECT g.id guest_id,g.name guest_name,g.guest_count,e.name event_name,e.venue_name,e.venue_address,
+         a.id allocation_id,a.check_in,a.check_out,a.status,r.room_number,h.name hotel_name,h.address hotel_address
+  FROM qr_passes q
+  JOIN guests g ON g.id=q.guest_id
+  JOIN events e ON e.id=g.event_id
+  LEFT JOIN allocations a ON a.guest_id=g.id AND a.status IN ('reserved','checked_in')
+  LEFT JOIN rooms r ON r.id=a.room_id
+  LEFT JOIN hotels h ON h.id=r.hotel_id
+  WHERE q.token_hash=$1 AND q.active=true
+  ORDER BY a.check_in NULLS LAST,a.created_at
+ `,[hash]);
+ if(!rows.length)return res.status(404).json({error:"Pass not found or expired"});
+ const first=rows[0];
+ res.set("Cache-Control","no-store");
+ res.json({guest:{name:first.guest_name,guest_count:first.guest_count},event:{name:first.event_name,venue_name:first.venue_name,venue_address:first.venue_address},allocations:rows.filter(x=>x.allocation_id).map(x=>({hotel_name:x.hotel_name,hotel_address:x.hotel_address,room_number:x.room_number,check_in:x.check_in,check_out:x.check_out,status:x.status}))});
+}));
+
 app.use("/api",auth);
 app.get("/api/events",wrap(async(req,res)=>{const {rows}=await query("SELECT * FROM events WHERE organizer_id=$1 ORDER BY created_at DESC",[req.user.sub]);res.json(rows)}));
 app.post("/api/events",wrap(async(req,res)=>{const s=z.object({name:z.string().min(2),bride_name:z.string().optional(),groom_name:z.string().optional(),starts_on:z.string().optional(),ends_on:z.string().optional(),venue_name:z.string().optional(),venue_address:z.string().optional()}).parse(req.body);const {rows}=await query("INSERT INTO events(organizer_id,name,bride_name,groom_name,starts_on,ends_on,venue_name,venue_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",[req.user.sub,s.name,s.bride_name||null,s.groom_name||null,s.starts_on||null,s.ends_on||null,s.venue_name||null,s.venue_address||null]);res.status(201).json(rows[0])}));
