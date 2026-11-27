@@ -16,6 +16,7 @@ app.use(express.json({limit:"2mb"}));
 const secret=process.env.JWT_SECRET;
 if(!secret||secret.length<32) throw new Error("JWT_SECRET must be at least 32 characters");
 const auth=(req,res,next)=>{try{const t=(req.headers.authorization||"").replace(/^Bearer\s+/i,"");req.user=jwt.verify(t,secret);next()}catch{return res.status(401).json({error:"Authentication required"})}};
+const requireOrganizer=(req,res,next)=>req.user.role==="organizer"?next():res.status(403).json({error:"Organizer account access required"});
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
 const idSchema=z.string().uuid();
 app.get("/api/health",wrap(async(req,res)=>{await query("SELECT 1");res.json({ok:true,service:"eventstay-api",database:"connected"})}));
@@ -60,10 +61,97 @@ app.get("/api/public/guest-pass/:token",guestPassLimiter,wrap(async(req,res)=>{
 }));
 
 app.use("/api",auth);
+/* Hotel portal routes. Membership is checked on every request, not trusted from JWT alone. */
+const hotelMembership=async(userId,hotelId)=>{
+ const {rows}=await query("SELECT hm.hotel_id,hm.role,h.name hotel_name FROM hotel_memberships hm JOIN hotels h ON h.id=hm.hotel_id WHERE hm.user_id=$1 AND hm.hotel_id=$2",[userId,hotelId]);
+ return rows[0]||null;
+};
+const requireHotelUser=(req,res,next)=>{
+ if(!["hotel_owner","hotel_staff"].includes(req.user.role))return res.status(403).json({error:"Hotel account access required"});
+ next();
+};
+app.get("/api/hotel/workspace",requireHotelUser,wrap(async(req,res)=>{
+ const {rows}=await query("SELECT h.id,h.name,h.address,h.phone,hm.role FROM hotel_memberships hm JOIN hotels h ON h.id=hm.hotel_id WHERE hm.user_id=$1 ORDER BY h.name",[req.user.sub]);
+ res.json({hotels:rows});
+}));
+app.get("/api/hotel/:hotelId/allocations",requireHotelUser,wrap(async(req,res)=>{
+ const member=await hotelMembership(req.user.sub,req.params.hotelId);if(!member)return res.status(403).json({error:"You do not have access to this hotel"});
+ const {rows}=await query("SELECT a.id,a.guest_count,a.check_in,a.check_out,a.status,g.name guest_name,g.phone guest_phone,r.room_number,e.name event_name FROM allocations a JOIN guests g ON g.id=a.guest_id JOIN events e ON e.id=g.event_id JOIN rooms r ON r.id=a.room_id WHERE r.hotel_id=$1 AND a.status IN ('reserved','checked_in') ORDER BY a.check_in,r.room_number",[req.params.hotelId]);
+ res.json(rows);
+}));
+app.post("/api/hotel/:hotelId/check-in/verify",requireHotelUser,wrap(async(req,res)=>{
+ const member=await hotelMembership(req.user.sub,req.params.hotelId);if(!member)return res.status(403).json({error:"You do not have access to this hotel"});
+ const input=z.object({token:z.string().regex(/^[a-f0-9]{64}$/i)}).strict().parse(req.body);
+ const hash=crypto.createHash("sha256").update(input.token).digest("hex");
+ const {rows}=await query("SELECT g.id guest_id,g.name guest_name,g.phone,g.guest_count,a.id allocation_id,a.status,a.check_in,a.check_out,r.room_number,h.name hotel_name FROM qr_passes q JOIN guests g ON g.id=q.guest_id JOIN allocations a ON a.guest_id=g.id JOIN rooms r ON r.id=a.room_id JOIN hotels h ON h.id=r.hotel_id WHERE q.token_hash=$1 AND q.active=true AND h.id=$2 AND a.status IN ('reserved','checked_in') ORDER BY a.check_in",[hash,req.params.hotelId]);
+ if(!rows.length)return res.status(404).json({error:"No active booking for this pass at your hotel"});
+ const allocations=rows.map(a=>({id:a.allocation_id,room_number:a.room_number,status:a.status,check_in:a.check_in,check_out:a.check_out}));
+ res.set("Cache-Control","no-store");
+ res.json({ok:true,guest:{id:rows[0].guest_id,name:rows[0].guest_name,phone:rows[0].phone,guest_count:rows[0].guest_count},hotel:rows[0].hotel_name,allocations,message:"Verify the guest identity and booking details before confirming check-in."});
+}));
+app.post("/api/hotel/:hotelId/check-in/:allocationId/confirm",requireHotelUser,wrap(async(req,res)=>{
+ const member=await hotelMembership(req.user.sub,req.params.hotelId);if(!member)return res.status(403).json({error:"You do not have access to this hotel"});
+ const c=await pool.connect();
+ try{
+  await c.query("BEGIN");
+  const {rows}=await c.query("UPDATE allocations a SET status='checked_in' FROM rooms r WHERE a.id=$1 AND a.room_id=r.id AND r.hotel_id=$2 AND a.status='reserved' RETURNING a.*",[req.params.allocationId,req.params.hotelId]);
+  if(!rows[0]){await c.query("ROLLBACK");return res.status(409).json({error:"Booking is not available for check-in; it may already be checked in or cancelled."})}
+  await c.query("INSERT INTO checkins(allocation_id,action,recorded_by) VALUES($1,'check_in',$2)",[rows[0].id,req.user.sub]);
+  await c.query("INSERT INTO audit_logs(organizer_id,actor_id,action,entity_type,entity_id,details) SELECT h.organizer_id,$2,'hotel_check_in','allocation',$1,jsonb_build_object('hotel_id',$3::text,'membership_role',$4) FROM hotels h WHERE h.id=$3",[rows[0].id,req.user.sub,req.params.hotelId,member.role]);
+  await c.query("COMMIT");res.json({ok:true,allocation:rows[0],message:"Check-in confirmed. Room key can now be handed over."});
+ }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
+}));
+app.post("/api/hotel/:hotelId/check-out/:allocationId",requireHotelUser,wrap(async(req,res)=>{
+ const member=await hotelMembership(req.user.sub,req.params.hotelId);if(!member)return res.status(403).json({error:"You do not have access to this hotel"});
+ const c=await pool.connect();
+ try{
+  await c.query("BEGIN");
+  const {rows}=await c.query("UPDATE allocations a SET status='checked_out' FROM rooms r WHERE a.id=$1 AND a.room_id=r.id AND r.hotel_id=$2 AND a.status='checked_in' RETURNING a.*",[req.params.allocationId,req.params.hotelId]);
+  if(!rows[0]){await c.query("ROLLBACK");return res.status(409).json({error:"No active check-in found for this hotel booking"})}
+  await c.query("INSERT INTO checkins(allocation_id,action,recorded_by) VALUES($1,'check_out',$2)",[rows[0].id,req.user.sub]);
+  await c.query("INSERT INTO audit_logs(organizer_id,actor_id,action,entity_type,entity_id,details) SELECT h.organizer_id,$2,'hotel_check_out','allocation',$1,jsonb_build_object('hotel_id',$3::text,'membership_role',$4) FROM hotels h WHERE h.id=$3",[rows[0].id,req.user.sub,req.params.hotelId,member.role]);
+  await c.query("COMMIT");res.json({ok:true,allocation:rows[0]});
+ }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
+}));
+app.use("/api",requireOrganizer);
+
 app.get("/api/events",wrap(async(req,res)=>{const {rows}=await query("SELECT * FROM events WHERE organizer_id=$1 ORDER BY created_at DESC",[req.user.sub]);res.json(rows)}));
 app.post("/api/events",wrap(async(req,res)=>{const s=z.object({name:z.string().min(2),bride_name:z.string().optional(),groom_name:z.string().optional(),starts_on:z.string().optional(),ends_on:z.string().optional(),venue_name:z.string().optional(),venue_address:z.string().optional()}).parse(req.body);const {rows}=await query("INSERT INTO events(organizer_id,name,bride_name,groom_name,starts_on,ends_on,venue_name,venue_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",[req.user.sub,s.name,s.bride_name||null,s.groom_name||null,s.starts_on||null,s.ends_on||null,s.venue_name||null,s.venue_address||null]);res.status(201).json(rows[0])}));
 app.get("/api/hotels",wrap(async(req,res)=>{const {rows}=await query("SELECT * FROM hotels WHERE organizer_id=$1 ORDER BY name",[req.user.sub]);res.json(rows)}));
 app.post("/api/hotels",wrap(async(req,res)=>{const s=z.object({name:z.string().min(2),phone:z.string().optional(),address:z.string().optional()}).parse(req.body);const {rows}=await query("INSERT INTO hotels(organizer_id,name,phone,address) VALUES($1,$2,$3,$4) RETURNING *",[req.user.sub,s.name,s.phone||null,s.address||null]);res.status(201).json(rows[0])}));
+
+/* Organizers provision hotel logins; hotels cannot self-register. */
+app.get("/api/hotels/:hotelId/members",wrap(async(req,res)=>{
+ const owns=await query("SELECT id FROM hotels WHERE id=$1 AND organizer_id=$2",[req.params.hotelId,req.user.sub]);if(!owns.rowCount)return res.status(404).json({error:"Hotel not found"});
+ const {rows}=await query("SELECT o.id,o.name,o.email,o.role,hm.role membership_role,hm.created_at FROM hotel_memberships hm JOIN organizers o ON o.id=hm.user_id WHERE hm.hotel_id=$1 ORDER BY hm.created_at",[req.params.hotelId]);res.json(rows);
+}));
+app.post("/api/hotels/:hotelId/members",authLimiter,wrap(async(req,res)=>{
+ const input=z.object({name:z.string().trim().min(2).max(120),email:z.string().email().max(254),password:z.string().min(10).max(128),role:z.enum(["owner","manager","front_desk"])}).strict().parse(req.body);
+ const owns=await query("SELECT id FROM hotels WHERE id=$1 AND organizer_id=$2",[req.params.hotelId,req.user.sub]);if(!owns.rowCount)return res.status(404).json({error:"Hotel not found"});
+ const email=input.email.toLowerCase(),role=input.role==="owner"?"hotel_owner":"hotel_staff",hash=await bcrypt.hash(input.password,12),c=await pool.connect();
+ try{
+  await c.query("BEGIN");
+  const existing=await c.query("SELECT id FROM organizers WHERE email=$1",[email]);
+  if(existing.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"This email already has an EventStay account. Use a different email for this hotel login."})}
+  const user=await c.query("INSERT INTO organizers(name,email,password_hash,role) VALUES($1,$2,$3,$4) RETURNING id,name,email,role",[input.name,email,hash,role]);
+  await c.query("INSERT INTO hotel_memberships(hotel_id,user_id,role) VALUES($1,$2,$3)",[req.params.hotelId,user.rows[0].id,input.role]);
+  await c.query("INSERT INTO audit_logs(organizer_id,actor_id,action,entity_type,entity_id,details) VALUES($1,$2,'hotel_member_created','hotel',$3,jsonb_build_object('member_id',$4::text,'role',$5))",[req.user.sub,req.user.sub,req.params.hotelId,user.rows[0].id,input.role]);
+  await c.query("COMMIT");res.status(201).json({user:user.rows[0],membership:{hotel_id:req.params.hotelId,role:input.role}});
+ }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
+}));
+app.delete("/api/hotels/:hotelId/members/:userId",wrap(async(req,res)=>{
+ const c=await pool.connect();
+ try{
+  await c.query("BEGIN");
+  const owns=await c.query("SELECT id FROM hotels WHERE id=$1 AND organizer_id=$2 FOR UPDATE",[req.params.hotelId,req.user.sub]);if(!owns.rowCount){await c.query("ROLLBACK");return res.status(404).json({error:"Hotel not found"})}
+  const removed=await c.query("DELETE FROM hotel_memberships hm USING organizers o WHERE hm.hotel_id=$1 AND hm.user_id=$2 AND o.id=hm.user_id AND o.role IN ('hotel_owner','hotel_staff') RETURNING hm.user_id",[req.params.hotelId,req.params.userId]);
+  if(!removed.rowCount){await c.query("ROLLBACK");return res.status(404).json({error:"Hotel member not found"})}
+  const remaining=await c.query("SELECT 1 FROM hotel_memberships WHERE user_id=$1",[req.params.userId]);
+  if(!remaining.rowCount)await c.query("DELETE FROM organizers WHERE id=$1",[req.params.userId]);
+  await c.query("INSERT INTO audit_logs(organizer_id,actor_id,action,entity_type,entity_id,details) VALUES($1,$2,'hotel_member_removed','hotel',$3,jsonb_build_object('member_id',$4::text))",[req.user.sub,req.user.sub,req.params.hotelId,req.params.userId]);
+  await c.query("COMMIT");res.status(204).end();
+ }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
+}));
 app.get("/api/hotels/:hotelId/rooms",wrap(async(req,res)=>{const {rows}=await query("SELECT r.* FROM rooms r JOIN hotels h ON h.id=r.hotel_id WHERE h.id=$1 AND h.organizer_id=$2 ORDER BY r.floor,r.room_number",[req.params.hotelId,req.user.sub]);res.json(rows)}));
 app.post("/api/hotels/:hotelId/rooms",wrap(async(req,res)=>{const s=z.object({room_number:z.string().min(1),floor:z.string().optional(),capacity:z.number().int().positive()}).parse(req.body);const owns=await query("SELECT id FROM hotels WHERE id=$1 AND organizer_id=$2",[req.params.hotelId,req.user.sub]);if(!owns.rowCount)return res.status(404).json({error:"Hotel not found"});const {rows}=await query("INSERT INTO rooms(hotel_id,room_number,floor,capacity) VALUES($1,$2,$3,$4) RETURNING *",[req.params.hotelId,s.room_number,s.floor||null,s.capacity]);res.status(201).json(rows[0])}));
 app.get("/api/events/:eventId/hotels",wrap(async(req,res)=>{const {rows}=await query("SELECT h.*,eh.created_at AS linked_at FROM event_hotels eh JOIN hotels h ON h.id=eh.hotel_id JOIN events e ON e.id=eh.event_id WHERE eh.event_id=$1 AND e.organizer_id=$2 ORDER BY h.name",[req.params.eventId,req.user.sub]);res.json(rows)}));
