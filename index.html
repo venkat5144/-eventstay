@@ -314,6 +314,9 @@ body{background:var(--paper);color:var(--ink)}
 }
 @media(min-width:701px){.brandmark{cursor:default}}
 
+
+/* Live API connection and authentication surface */
+.auth-backdrop{position:fixed;inset:0;background:rgba(28,38,32,.62);z-index:1000;display:none;align-items:center;justify-content:center;padding:18px}.auth-backdrop.show{display:flex}.auth-card{width:min(100%,430px);background:var(--white);border:1px solid var(--line);border-radius:18px;padding:25px;box-shadow:0 24px 80px #14251d55}.auth-card h2{font:600 30px Georgia,serif;margin:0 0 8px}.auth-card p{color:var(--muted);font-size:13px;line-height:1.55}.auth-card .field{margin:14px 0}.auth-card input{width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--line);border-radius:9px;background:#fff}.auth-actions{display:flex;gap:9px;margin-top:18px}.auth-actions button{flex:1}.connection-note{font-size:11px;color:var(--muted);margin-top:12px}.live-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:30px;padding:5px 9px;font-size:10px;color:var(--green)}.live-pill:before{content:'';width:6px;height:6px;border-radius:50%;background:#c08a52}
 </style>
 </head>
 <body>
@@ -388,6 +391,8 @@ body{background:var(--paper);color:var(--ink)}
 <div class="footer">EVENTSTAY · ACCOMMODATION MANAGEMENT · DEMO DATA</div>
 </div>
 </main></div>
+<div class="auth-backdrop" id="authBackdrop"><form class="auth-card" id="authForm"><h2>Welcome to EventStay</h2><p id="authIntro">Sign in to access your event workspace. Your data is stored in your EventStay account.</p><div class="field"><label for="authName">Your name</label><input id="authName" autocomplete="name" placeholder="Full name" /></div><div class="field"><label for="authEmail">Email address</label><input id="authEmail" type="email" required autocomplete="email" placeholder="you@example.com" /></div><div class="field"><label for="authPassword">Password</label><input id="authPassword" type="password" required minlength="10" autocomplete="current-password" placeholder="At least 10 characters" /></div><div class="auth-actions"><button class="btn primary" id="authSubmit" type="submit">Sign in</button><button class="btn" id="authMode" type="button">Create account</button></div><div class="connection-note" id="authMessage">API connection is not configured yet.</div></form></div>
+
 <div class="modal" id="modal"><div class="dialog"><h2>Add a guest</h2><p>Add the guest count, family side and contact details. WhatsApp opens with a ready-to-send room and venue invitation.</p>
 <div class="field"><label>Guest / family name</label><input id="guestName" placeholder="e.g. Rahul Kumar family" required></div>
 <div class="field"><label>Mobile number (with country code)</label><input id="guestPhone" type="tel" placeholder="e.g. +91 98765 43210" required></div>
@@ -530,6 +535,80 @@ if(menuToggle&&sideMenu){
    menuToggle.setAttribute('aria-label','Open navigation menu');
   }
  }));
+}
+
+
+// EventStay API foundation. Set EVENTSTAY_API_BASE in api-config.js after backend deployment.
+const EVENTSTAY_API_BASE=(window.EVENTSTAY_API_BASE||'').replace(/\\/$/,'');
+const authTokenKey='eventstay-access-token';
+let apiToken=sessionStorage.getItem(authTokenKey)||'';
+let currentUser=null;
+let liveEvents=[];
+let currentEventId='';
+const apiRequest=async(path,options={})=>{
+ if(!EVENTSTAY_API_BASE)throw new Error('Backend URL is not configured yet.');
+ const response=await fetch(EVENTSTAY_API_BASE+path,{...options,headers:{'Content-Type':'application/json',...(apiToken?{Authorization:'Bearer '+apiToken}:{}),...(options.headers||{})}});
+ const data=response.status===204?null:await response.json().catch(()=>({error:'Invalid server response'}));
+ if(!response.ok)throw new Error(data?.error||'Request failed ('+response.status+')');
+ return data;
+};
+function showAuth(message,register=false){
+ const back=document.getElementById('authBackdrop');back.classList.add('show');
+ document.getElementById('authName').parentElement.style.display=register?'block':'none';
+ document.getElementById('authSubmit').textContent=register?'Create account':'Sign in';
+ document.getElementById('authMode').textContent=register?'I already have an account':'Create account';
+ document.getElementById('authMessage').textContent=message||'';
+ document.getElementById('authIntro').textContent=register?'Create an organizer account to start managing events and accommodation.':'Sign in to access your event workspace.';
+ back.dataset.mode=register?'register':'login';
+}
+document.getElementById('authMode').addEventListener('click',()=>showAuth('',document.getElementById('authBackdrop').dataset.mode!=='register'));
+document.getElementById('authForm').addEventListener('submit',async e=>{
+ e.preventDefault();const register=document.getElementById('authBackdrop').dataset.mode==='register';
+ const payload={email:document.getElementById('authEmail').value.trim(),password:document.getElementById('authPassword').value};
+ if(register)payload.name=document.getElementById('authName').value.trim();
+ const submit=document.getElementById('authSubmit');submit.disabled=true;submit.textContent='Please wait…';
+ try{
+  const result=await apiRequest('/api/auth/'+(register?'register':'login'),{method:'POST',body:JSON.stringify(payload)});
+  apiToken=result.token;sessionStorage.setItem(authTokenKey,apiToken);currentUser=result.user;
+  document.getElementById('authBackdrop').classList.remove('show');
+  await loadLiveWorkspace();
+ }catch(err){document.getElementById('authMessage').textContent=err.message}
+ finally{submit.disabled=false;submit.textContent=register?'Create account':'Sign in'}
+});
+async function loadLiveWorkspace(){
+ try{
+  const [me,events,hotels]=await Promise.all([apiRequest('/api/me'),apiRequest('/api/events'),apiRequest('/api/hotels')]);
+  currentUser=me.user;liveEvents=events;
+  const select=document.querySelector('.eventselect');select.innerHTML='';
+  liveEvents.forEach(ev=>{const o=document.createElement('option');o.value=ev.id;o.textContent=ev.name;select.appendChild(o)});
+  if(!liveEvents.length){select.innerHTML='<option value="">Create your first event</option>';showAuth('Your account is ready. Event creation screen is the next step.',false);return}
+  currentEventId=liveEvents[0].id;select.value=currentEventId;
+  const profile=document.querySelector('.profile');if(profile)profile.innerHTML='<div class="avatar">'+escapeText((currentUser.name||'E').slice(0,1).toUpperCase())+'</div><div><b>'+escapeText(currentUser.name)+'</b><span>Event Organizer</span></div>';
+  document.querySelector('.workspace b').textContent=currentUser.name;
+  await refreshLiveDashboard();
+ }catch(err){apiToken='';sessionStorage.removeItem(authTokenKey);showAuth(err.message,false)}
+}
+async function refreshLiveDashboard(){
+ if(!currentEventId)return;
+ const [stats,guests,linkedHotels]=await Promise.all([apiRequest('/api/dashboard/'+currentEventId),apiRequest('/api/events/'+currentEventId+'/guests'),apiRequest('/api/events/'+currentEventId+'/hotels')]);
+ const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value};
+ set('allocated',stats.people_count||0);set('checkedin',stats.checked_in||0);
+ const hotelRows=await Promise.all(linkedHotels.map(async h=>({hotel:h,rooms:await apiRequest('/api/hotels/'+h.id+'/rooms')})));
+ set('totalRooms',hotelRows.reduce((n,x)=>n+x.rooms.length,0));
+ const tbody=document.getElementById('guestRows');tbody.innerHTML='';
+ guests.forEach(g=>renderGuest({id:g.id,name:g.name,side:g.side,room:'Not allocated',count:g.guest_count,date:'',token:'',phone:g.phone,qr_token:null}));
+ const panel=document.querySelector('#hotels');
+ const rows=panel.querySelectorAll('.hotelrow');rows.forEach(r=>r.remove());
+ hotelRows.forEach(({hotel,rooms})=>{const row=document.createElement('div');row.className='hotelrow';row.innerHTML='<div class="hotelbadge">'+escapeText(hotel.name.slice(0,2).toUpperCase())+'</div><div class="hotelinfo"><b>'+escapeText(hotel.name)+'</b><small>'+escapeText(hotel.address||'Address not added')+'</small></div><div class="occupancy"><div class="bar"><i style="width:0%"></i></div><small>'+rooms.length+' rooms registered</small></div><span class="status">Linked</span>';panel.insertBefore(row,panel.querySelector('.panelhead[style]'))});
+ const footer=document.querySelector('.footer');footer.textContent='EVENTSTAY · LIVE ACCOUNT DATA';
+}
+document.querySelector('.eventselect').addEventListener('change',async e=>{currentEventId=e.target.value;await refreshLiveDashboard().catch(err=>alert(err.message))});
+if(EVENTSTAY_API_BASE){
+ document.querySelectorAll('.stat .value').forEach(el=>el.textContent='—');
+ document.querySelector('.footer').textContent='EVENTSTAY · CONNECTING TO LIVE DATABASE';
+ if(apiToken)loadLiveWorkspace();else showAuth('Sign in to load your live workspace.',false);
+}else{
+ document.querySelector('.footer').textContent='EVENTSTAY · DEMO MODE · API NOT CONFIGURED';
 }
 
 </script>
