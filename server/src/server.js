@@ -9,7 +9,8 @@ import { z } from "zod";
 import { pool, query, initDb } from "./db.js";
 const app=express();
 app.use(helmet());
-app.use(cors({origin:process.env.CLIENT_ORIGIN?.split(",")||true}));
+const allowedOrigins=(process.env.CLIENT_ORIGIN||"http://localhost:3000,http://127.0.0.1:5500").split(",").map(v=>v.trim()).filter(Boolean);
+app.use(cors({origin(origin,callback){if(!origin||allowedOrigins.includes(origin))return callback(null,true);return callback(new Error("Origin not allowed"))},credentials:false}));
 app.use(express.json({limit:"2mb"}));
 const secret=process.env.JWT_SECRET;
 if(!secret||secret.length<32) throw new Error("JWT_SECRET must be at least 32 characters");
@@ -18,9 +19,9 @@ const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
 const idSchema=z.string().uuid();
 app.get("/api/health",wrap(async(req,res)=>{await query("SELECT 1");res.json({ok:true,service:"eventstay-api",database:"connected"})}));
 app.post("/api/auth/register",wrap(async(req,res)=>{
- const s=z.object({name:z.string().min(2),email:z.string().email(),password:z.string().min(10),role:z.enum(["organizer","hotel_owner"]).default("organizer")}).parse(req.body);
+ const s=z.object({name:z.string().trim().min(2).max(120),email:z.string().email().max(254),password:z.string().min(10).max(128)}).strict().parse(req.body);
  const hash=await bcrypt.hash(s.password,12);
- const {rows}=await query("INSERT INTO organizers(name,email,password_hash,role) VALUES($1,$2,$3,$4) RETURNING id,name,email,role",[s.name,s.email.toLowerCase(),hash,s.role]);
+ const {rows}=await query("INSERT INTO organizers(name,email,password_hash,role) VALUES($1,$2,$3,$4) RETURNING id,name,email,role",[s.name,s.email.toLowerCase(),hash,"organizer"]);
  const user=rows[0],token=jwt.sign({sub:user.id,role:user.role},secret,{expiresIn:"12h"});
  res.status(201).json({user,token});
 }));
@@ -41,7 +42,7 @@ app.post("/api/hotels/:hotelId/rooms",wrap(async(req,res)=>{const s=z.object({ro
 app.get("/api/events/:eventId/guests",wrap(async(req,res)=>{const {rows}=await query("SELECT g.*,i.status AS invitation_status FROM guests g LEFT JOIN invitations i ON i.guest_id=g.id WHERE g.event_id=$1 AND EXISTS(SELECT 1 FROM events e WHERE e.id=g.event_id AND e.organizer_id=$2) ORDER BY g.created_at DESC",[req.params.eventId,req.user.sub]);res.json(rows)}));
 app.post("/api/events/:eventId/guests",wrap(async(req,res)=>{const s=z.object({name:z.string().min(1),phone:z.string().optional(),address:z.string().optional(),side:z.string().default("Other"),guest_count:z.number().int().positive().default(1),photo_url:z.string().url().optional()}).parse(req.body);const own=await query("SELECT id FROM events WHERE id=$1 AND organizer_id=$2",[req.params.eventId,req.user.sub]);if(!own.rowCount)return res.status(404).json({error:"Event not found"});const client=await pool.connect();try{await client.query("BEGIN");const g=await client.query("INSERT INTO guests(event_id,name,phone,address,side,guest_count,photo_url) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *",[req.params.eventId,s.name,s.phone||null,s.address||null,s.side,s.guest_count,s.photo_url||null]);await client.query("INSERT INTO invitations(guest_id) VALUES($1)",[g.rows[0].id]);const token=crypto.randomBytes(32).toString("hex");await client.query("INSERT INTO qr_passes(guest_id,token_hash) VALUES($1,$2)",[g.rows[0].id,crypto.createHash("sha256").update(token).digest("hex")]);await client.query("COMMIT");res.status(201).json({...g.rows[0],qr_token:token})}catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}}));
 app.patch("/api/invitations/:id",wrap(async(req,res)=>{const s=z.object({status:z.enum(["pending","sent","delivered","responded"])}).parse(req.body);const {rows}=await query("UPDATE invitations i SET status=$1,sent_at=CASE WHEN $1='sent' THEN now() ELSE sent_at END FROM guests g JOIN events e ON e.id=g.event_id WHERE i.id=$2 AND i.guest_id=g.id AND e.organizer_id=$3 RETURNING i.*",[s.status,req.params.id,req.user.sub]);if(!rows[0])return res.status(404).json({error:"Invitation not found"});res.json(rows[0])}));
-app.get("/api/dashboard/:eventId",wrap(async(req,res)=>{const {rows}=await query(`SELECT (SELECT count(*) FROM guests WHERE event_id=$1)::int total_guests,(SELECT coalesce(sum(guest_count),0) FROM guests WHERE event_id=$1)::int people_count,(SELECT count(*) FROM invitations i JOIN guests g ON g.id=i.guest_id WHERE g.event_id=$1 AND i.status='sent')::int invitations_sent,(SELECT count(*) FROM invitations i JOIN guests g ON g.id=i.guest_id WHERE g.event_id=$1 AND i.status='pending')::int invitations_pending,(SELECT count(*) FROM allocations a JOIN guests g ON g.id=a.guest_id WHERE g.event_id=$1 AND a.status='checked_in')::int checked_in`,[req.params.eventId]);res.json(rows[0])}));
+app.get("/api/dashboard/:eventId",wrap(async(req,res)=>{const owned=await query("SELECT id FROM events WHERE id=$1 AND organizer_id=$2",[req.params.eventId,req.user.sub]);if(!owned.rowCount)return res.status(404).json({error:"Event not found"});const {rows}=await query(`SELECT (SELECT count(*) FROM guests WHERE event_id=$1)::int total_guests,(SELECT coalesce(sum(guest_count),0) FROM guests WHERE event_id=$1)::int people_count,(SELECT count(*) FROM invitations i JOIN guests g ON g.id=i.guest_id WHERE g.event_id=$1 AND i.status='sent')::int invitations_sent,(SELECT count(*) FROM invitations i JOIN guests g ON g.id=i.guest_id WHERE g.event_id=$1 AND i.status='pending')::int invitations_pending,(SELECT count(*) FROM allocations a JOIN guests g ON g.id=a.guest_id WHERE g.event_id=$1 AND a.status='checked_in')::int checked_in`,[req.params.eventId]);res.json(rows[0])}));
 
 app.post("/api/allocations",wrap(async(req,res)=>{
  const s=z.object({guest_id:z.string().uuid(),room_id:z.string().uuid(),check_in:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),check_out:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),guest_count:z.number().int().positive()}).parse(req.body);
@@ -71,9 +72,14 @@ app.post("/api/check-in/verify",wrap(async(req,res)=>{
  const c=await pool.connect();try{await c.query("BEGIN");const changed=await c.query("UPDATE allocations SET status='checked_in' WHERE id=$1 AND status='reserved' RETURNING id",[a.allocation_id]);if(!changed.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"This allocation is no longer available for check-in"})}await c.query("INSERT INTO checkins(allocation_id,action,recorded_by) VALUES($1,'check_in',$2)",[a.allocation_id,req.user.sub]);await c.query("COMMIT");res.json({ok:true,guest:a.name,allocation_id:a.allocation_id,status:"checked_in"})}catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
 }));
 app.post("/api/check-in/:allocationId/checkout",wrap(async(req,res)=>{
- const {rows}=await query("UPDATE allocations a SET status='checked_out' FROM guests g JOIN events e ON e.id=g.event_id WHERE a.id=$1 AND a.guest_id=g.id AND e.organizer_id=$2 AND a.status='checked_in' RETURNING a.*",[req.params.allocationId,req.user.sub]);
- if(!rows[0])return res.status(404).json({error:"Active check-in not found"});
- await query("INSERT INTO checkins(allocation_id,action,recorded_by) VALUES($1,'check_out',$2)",[rows[0].id,req.user.sub]);res.json(rows[0]);
+ const c=await pool.connect();
+ try{
+  await c.query("BEGIN");
+  const {rows}=await c.query("UPDATE allocations a SET status='checked_out' FROM guests g JOIN events e ON e.id=g.event_id WHERE a.id=$1 AND a.guest_id=g.id AND e.organizer_id=$2 AND a.status='checked_in' RETURNING a.*",[req.params.allocationId,req.user.sub]);
+  if(!rows[0]){await c.query("ROLLBACK");return res.status(404).json({error:"Active check-in not found"})}
+  await c.query("INSERT INTO checkins(allocation_id,action,recorded_by) VALUES($1,'check_out',$2)",[rows[0].id,req.user.sub]);
+  await c.query("COMMIT");res.json(rows[0]);
+ }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
 }));
 \napp.use((err,req,res,next)=>{console.error(err);if(err instanceof z.ZodError)return res.status(400).json({error:"Validation failed",details:err.issues});if(err.code==="23505")return res.status(409).json({error:"This record already exists"});res.status(500).json({error:process.env.NODE_ENV==="production"?"Internal server error":err.message})});
 const port=Number(process.env.PORT||5000);
