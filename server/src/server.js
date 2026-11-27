@@ -96,6 +96,31 @@ app.post("/api/check-in/:allocationId/checkout",wrap(async(req,res)=>{
  }catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
 }));
 
+
+/* Organizer-owned wedding invitation register. */
+app.get("/api/events/:eventId/invitations",wrap(async(req,res)=>{
+ const own=await query("SELECT id FROM events WHERE id=$1 AND organizer_id=$2",[req.params.eventId,req.user.sub]);
+ if(!own.rowCount)return res.status(404).json({error:"Event not found"});
+ const {rows}=await query("SELECT * FROM wedding_contacts WHERE event_id=$1 ORDER BY created_at DESC",[req.params.eventId]);
+ res.json(rows);
+}));
+app.post("/api/events/:eventId/invitations",wrap(async(req,res)=>{
+ const s=z.object({name:z.string().trim().min(1).max(160),phone:z.string().trim().min(10).max(30),address:z.string().max(500).optional(),side:z.enum(["Bride","Groom","Both families","Friends","Colleagues","Other"]).default("Other"),photo_data:z.string().max(1800000).optional()}).strict().parse(req.body);
+ const {rows}=await query("INSERT INTO wedding_contacts(event_id,name,phone,address,side,photo_data) SELECT id,$2,$3,$4,$5,$6 FROM events WHERE id=$1 AND organizer_id=$7 RETURNING *",[req.params.eventId,s.name,s.phone,s.address||null,s.side,s.photo_data||null,req.user.sub]);
+ if(!rows[0])return res.status(404).json({error:"Event not found"});
+ res.status(201).json(rows[0]);
+}));
+app.patch("/api/invitations/:id/status",wrap(async(req,res)=>{
+ const s=z.object({status:z.enum(["pending","sent"])}).strict().parse(req.body);
+ const {rows}=await query("UPDATE wedding_contacts c SET status=$1,sent_at=CASE WHEN $1='sent' THEN COALESCE(sent_at,now()) ELSE NULL END,updated_at=now() FROM events e WHERE c.id=$2 AND c.event_id=e.id AND e.organizer_id=$3 RETURNING c.*",[s.status,req.params.id,req.user.sub]);
+ if(!rows[0])return res.status(404).json({error:"Invitation contact not found"});
+ res.json(rows[0]);
+}));
+app.delete("/api/invitations/:id",wrap(async(req,res)=>{
+ const {rowCount}=await query("DELETE FROM wedding_contacts c USING events e WHERE c.id=$1 AND c.event_id=e.id AND e.organizer_id=$2",[req.params.id,req.user.sub]);
+ if(!rowCount)return res.status(404).json({error:"Invitation contact not found"});
+ res.status(204).end();
+}));
 app.use((err,req,res,next)=>{console.error(err);if(err instanceof z.ZodError)return res.status(400).json({error:"Validation failed",details:err.issues});if(err.code==="23505")return res.status(409).json({error:"This record already exists"});res.status(500).json({error:process.env.NODE_ENV==="production"?"Internal server error":err.message})});
 const port=Number(process.env.PORT||5000);
 await initDb();app.listen(port,()=>console.log("EventStay API listening on "+port));
