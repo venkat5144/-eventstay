@@ -735,7 +735,24 @@ async function addGuest(){
   const passUrl='https://venkat5144.github.io/-eventstay/guest-pass.html?token='+encodeURIComponent(saved.qr_token);const message='Hello '+name+', your EventStay guest pass is ready. Open this link to view your booking and QR code: '+passUrl;if(confirm('Guest saved. Open WhatsApp to share the secure guest pass?'))window.open('https://wa.me/'+phone.replace(/\\D/g,'')+'?text='+encodeURIComponent(message),'_blank','noopener');else{try{await navigator.clipboard.writeText(passUrl);alert('Guest pass link copied:\\n'+passUrl)}catch{prompt('Copy this guest pass link:',passUrl)}}
  }catch(e){alert(e.message)}
 }
-if(EVENTSTAY_API_BASE){document.querySelectorAll('.stat .value').forEach(el=>el.textContent='—');if(apiToken)loadLiveWorkspace();else showAuth('Sign in to load your live workspace.',false)}
+if(EVENTSTAY_API_BASE){
+ document.querySelectorAll('.stat .value').forEach(el=>el.textContent='—');
+ if(apiToken)loadLiveWorkspace();else showAuth('Sign in to load your live workspace.',false);
+}else{
+ // Never present the bundled sample workspace as real customer data.
+ document.querySelectorAll('.stats > .stat .value').forEach(el=>el.textContent='—');
+ document.querySelectorAll('.stats > .stat .delta').forEach(el=>el.textContent='Waiting for backend connection');
+ document.querySelectorAll('#hotels .hotelrow').forEach(el=>el.remove());
+ document.getElementById('guestRows').innerHTML='<tr><td colspan="7">Live guest records will appear after the backend is connected.</td></tr>';
+ document.querySelectorAll('#activity .activity').forEach(el=>el.remove());
+ document.querySelector('#activity .status').textContent='Not connected';
+ document.querySelector('.workspace b').textContent='Backend not connected';
+ document.querySelector('.profile').innerHTML='<div class="avatar">E</div><div><b>EventStay</b><span>Setup required</span></div>';
+ document.querySelector('.footer').textContent='EVENTSTAY · BACKEND NOT CONFIGURED · SAMPLE DATA HIDDEN';
+ document.querySelector('.sub').textContent='Connect the EventStay API to load real events, rooms, guests and check-ins.';
+ document.querySelectorAll('.actions button, .live-tools button, #newEventBtn, #newHotelBtn, #newRoomBtn, #linkHotelBtn').forEach(el=>el.disabled=true);
+ showAuth('Backend URL is not configured. The dashboard is in read-only setup mode; no sample figures are shown.',false);
+}
 
 </script>
 </body></html>
