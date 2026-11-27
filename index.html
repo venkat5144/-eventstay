@@ -463,57 +463,62 @@ savedGuests.forEach(g=>{if(!g.token)g.token=('ES'+g.id+Math.random().toString(36
 localStorage.setItem(guestStoreKey,JSON.stringify(savedGuests));
 savedGuests.slice().reverse().forEach(renderGuest);
 
-const inviteStoreKey='eventstay-wedding-invitations-v1';
-let inviteContacts=JSON.parse(localStorage.getItem(inviteStoreKey)||'[]');
+let inviteContacts=[];
+async function loadInviteContacts(){
+ if(!currentEventId||!apiToken){inviteContacts=[];renderInviteContacts();return}
+ try{inviteContacts=await apiRequest('/api/events/'+currentEventId+'/invitations');renderInviteContacts()}
+ catch(err){inviteContacts=[];renderInviteContacts();console.error('Invitation register:',err.message)}
+}
 function toggleInviteForm(force){
  const el=document.getElementById('inviteForm');
  el.style.display=(force===false?'none':el.style.display==='none'?'block':'none');
 }
-function addInviteContact(){
+async function addInviteContact(){
  const name=document.getElementById('inviteName').value.trim();
  const phone=document.getElementById('invitePhone').value.trim();
  const address=document.getElementById('inviteAddress').value.trim();
  const side=document.getElementById('inviteSide').value;
  const file=document.getElementById('invitePhoto').files[0];
  if(!name||!phone){alert('Enter the guest name and phone number.');return}
- if(phone.replace(/\D/g,'').length<10){alert('Enter a valid phone number with country code.');return}
- if(file&&file.size>1500000){alert('Choose a photo smaller than 1.5 MB.');return}
- const save=photo=>{
-  const item={id:Date.now()+Math.random(),name,phone,address,side,photo:photo||'',sent:false,createdAt:new Date().toISOString()};
-  inviteContacts.unshift(item);
-  try{localStorage.setItem(inviteStoreKey,JSON.stringify(inviteContacts))}
-  catch(e){inviteContacts.shift();alert('Browser storage is full. Try a smaller photo or remove old contacts.');return}
-  renderInviteContacts();
-  ['inviteName','invitePhone','inviteAddress','invitePhoto'].forEach(id=>document.getElementById(id).value='');
-  toggleInviteForm(false);
+ if(phone.replace(/\\D/g,'').length<10){alert('Enter a valid phone number with country code.');return}
+ if(!currentEventId||!apiToken){alert('Sign in and select an event before saving invitation contacts.');return}
+ if(file&&file.size>1200000){alert('Choose a photo smaller than 1.2 MB.');return}
+ const save=async photo_data=>{
+  try{
+   await apiRequest('/api/events/'+currentEventId+'/invitations',{method:'POST',body:JSON.stringify({name,phone,address,side,photo_data})});
+   ['inviteName','invitePhone','inviteAddress','invitePhoto'].forEach(id=>document.getElementById(id).value='');
+   toggleInviteForm(false);await loadInviteContacts();
+  }catch(err){alert('Could not save invitation contact: '+err.message)}
  };
- if(file){const reader=new FileReader();reader.onload=()=>save(reader.result);reader.readAsDataURL(file)}
- else save('');
+ if(file){const reader=new FileReader();reader.onload=()=>save(reader.result);reader.readAsDataURL(file)}else await save('');
 }
 function invitationMessage(c){
- const event=document.querySelector('.eventselect').selectedOptions[0].textContent;
+ const event=document.querySelector('.eventselect')?.selectedOptions?.[0]?.textContent||'our wedding celebration';
  return 'Namaste '+c.name+', you are warmly invited to '+event+'. We look forward to celebrating with you. Regards, Event Organizer.';
 }
-function inviteWhatsApp(c){return 'https://wa.me/'+c.phone.replace(/\D/g,'')+'?text='+encodeURIComponent(invitationMessage(c))}
-function markInviteSent(id){
- const c=inviteContacts.find(x=>String(x.id)===String(id));if(!c)return;
- c.sent=true;c.sentAt=new Date().toISOString();
- localStorage.setItem(inviteStoreKey,JSON.stringify(inviteContacts));renderInviteContacts();
+function inviteWhatsApp(c){return 'https://wa.me/'+c.phone.replace(/\\D/g,'')+'?text='+encodeURIComponent(invitationMessage(c))}
+async function markInviteSent(id){
+ try{await apiRequest('/api/invitations/'+id+'/status',{method:'PATCH',body:JSON.stringify({status:'sent'})});await loadInviteContacts()}
+ catch(err){alert('Could not update invitation status: '+err.message)}
 }
 function renderInviteContacts(){
- const body=document.getElementById('inviteRows');body.innerHTML='';
+ const body=document.getElementById('inviteRows');if(!body)return;body.innerHTML='';
  document.getElementById('inviteTotal').textContent=inviteContacts.length;
- document.getElementById('inviteSent').textContent=inviteContacts.filter(x=>x.sent).length;
- document.getElementById('invitePending').textContent=inviteContacts.filter(x=>!x.sent).length;
+ document.getElementById('inviteSent').textContent=inviteContacts.filter(x=>x.status==='sent').length;
+ document.getElementById('invitePending').textContent=inviteContacts.filter(x=>x.status!=='sent').length;
  if(!inviteContacts.length){body.innerHTML='<tr><td colspan="6" style="color:#857875;padding:20px 10px">No invitation contacts added yet.</td></tr>';return}
  inviteContacts.forEach(c=>{
   const tr=document.createElement('tr');
-  const avatar=c.photo?'<img class="invite-photo" src="'+c.photo+'" alt="">':'<span class="miniavatar" style="display:inline-grid;vertical-align:middle;margin-right:8px">'+escapeText(c.name.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase())+'</span>';
-  tr.innerHTML='<td><b>'+avatar+escapeText(c.name)+'</b></td><td>'+escapeText(c.phone)+'</td><td style="white-space:normal;min-width:150px">'+escapeText(c.address||'—')+'</td><td>'+escapeText(c.side)+'</td><td><span class="tag '+(c.sent?'':'pending')+'">'+(c.sent?'Sent':'Pending')+'</span></td><td><div class="invite-actions"><a class="btn primary" style="text-decoration:none;padding:7px 9px" target="_blank" rel="noopener" href="'+inviteWhatsApp(c)+'">WhatsApp</a>'+(c.sent?'':'<button class="btn" style="padding:7px 9px" onclick="markInviteSent(\''+String(c.id)+'\')">Mark sent</button>')+'</div></td>';
+  const avatar=c.photo_data?'<img class="invite-photo" src="'+c.photo_data+'" alt="">':'<span class="miniavatar" style="display:inline-grid;vertical-align:middle;margin-right:8px">'+escapeText(c.name.split(/\\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase())+'</span>';
+  tr.innerHTML='<td><b>'+avatar+escapeText(c.name)+'</b></td><td>'+escapeText(c.phone)+'</td><td style="white-space:normal;min-width:150px">'+escapeText(c.address||'—')+'</td><td>'+escapeText(c.side)+'</td><td><span class="tag '+(c.status==='sent'?'':'pending')+'">'+(c.status==='sent'?'Sent':'Pending')+'</span></td><td><div class="invite-actions"><a class="btn primary" style="text-decoration:none;padding:7px 9px" target="_blank" rel="noopener" href="'+inviteWhatsApp(c)+'">WhatsApp</a>'+(c.status==='sent'?'':'<button class="btn" style="padding:7px 9px" onclick="markInviteSent(\\''+String(c.id)+'\\')">Mark sent</button>')+'<button class="btn" style="padding:7px 9px" onclick="deleteInviteContact(\\''+String(c.id)+'\\')">Delete</button></div></td>';
   body.appendChild(tr);
  });
 }
-renderInviteContacts();
+async function deleteInviteContact(id){
+ if(!confirm('Delete this invitation contact?'))return;
+ try{await apiRequest('/api/invitations/'+id,{method:'DELETE'});await loadInviteContacts()}
+ catch(err){alert('Could not delete contact: '+err.message)}
+}
 
 document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
 
@@ -590,7 +595,7 @@ async function loadLiveWorkspace(){
 }
 async function refreshLiveDashboard(){
  if(!currentEventId)return;
- const [stats,guests,linkedHotels]=await Promise.all([apiRequest('/api/dashboard/'+currentEventId),apiRequest('/api/events/'+currentEventId+'/guests'),apiRequest('/api/events/'+currentEventId+'/hotels')]);
+ const [stats,guests,linkedHotels]=await Promise.all([apiRequest('/api/dashboard/'+currentEventId),apiRequest('/api/events/'+currentEventId+'/guests'),apiRequest('/api/events/'+currentEventId+'/hotels')]);await loadInviteContacts();
  const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value};
  set('allocated',stats.people_count||0);set('checkedin',stats.checked_in||0);
  const hotelRows=await Promise.all(linkedHotels.map(async h=>({hotel:h,rooms:await apiRequest('/api/hotels/'+h.id+'/rooms')})));
