@@ -61,9 +61,12 @@ app.post("/api/allocations",wrap(async(req,res)=>{
  const c=await pool.connect();try{await c.query("BEGIN");
  const room=await c.query("SELECT r.capacity,h.organizer_id FROM rooms r JOIN hotels h ON h.id=r.hotel_id WHERE r.id=$1 FOR UPDATE",[s.room_id]);
  if(!room.rowCount||room.rows[0].organizer_id!==req.user.sub){await c.query("ROLLBACK");return res.status(404).json({error:"Room not found"})}
- const guest=await c.query("SELECT g.id,g.guest_count FROM guests g JOIN events e ON e.id=g.event_id WHERE g.id=$1 AND e.organizer_id=$2",[s.guest_id,req.user.sub]);
+ const guest=await c.query("SELECT g.id,g.guest_count,g.event_id FROM guests g JOIN events e ON e.id=g.event_id WHERE g.id=$1 AND e.organizer_id=$2",[s.guest_id,req.user.sub]);
  if(!guest.rowCount){await c.query("ROLLBACK");return res.status(404).json({error:"Guest not found"})}
- if(s.guest_count>guest.rows[0].guest_count){await c.query("ROLLBACK");return res.status(400).json({error:"Allocated guest count cannot exceed the guest booking count"})}
+ const linked=await c.query("SELECT 1 FROM event_hotels WHERE event_id=$1 AND hotel_id=(SELECT hotel_id FROM rooms WHERE id=$2)",[guest.rows[0].event_id,s.room_id]);
+ if(!linked.rowCount){await c.query("ROLLBACK");return res.status(400).json({error:"Link this hotel to the guest's event before allocating rooms"})}
+ const guestAllocated=await c.query("SELECT coalesce(sum(guest_count),0)::int n FROM allocations WHERE guest_id=$1 AND status<>'cancelled' AND check_in<$3 AND check_out>$2",[s.guest_id,s.check_in,s.check_out]);
+ if(guestAllocated.rows[0].n+s.guest_count>guest.rows[0].guest_count){await c.query("ROLLBACK");return res.status(400).json({error:"Total allocated guests cannot exceed the booking count",alreadyAllocated:guestAllocated.rows[0].n})}
  const used=await c.query("SELECT coalesce(sum(guest_count),0)::int n FROM allocations WHERE room_id=$1 AND status<>'cancelled' AND check_in<$3 AND check_out>$2",[s.room_id,s.check_in,s.check_out]);
  if(used.rows[0].n+s.guest_count>room.rows[0].capacity){await c.query("ROLLBACK");return res.status(409).json({error:"Room capacity exceeded",available:room.rows[0].capacity-used.rows[0].n})}
  const {rows}=await c.query("INSERT INTO allocations(guest_id,room_id,check_in,check_out,guest_count) VALUES($1,$2,$3,$4,$5) RETURNING *",[s.guest_id,s.room_id,s.check_in,s.check_out,s.guest_count]);
