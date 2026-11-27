@@ -44,12 +44,14 @@ app.patch("/api/invitations/:id",wrap(async(req,res)=>{const s=z.object({status:
 app.get("/api/dashboard/:eventId",wrap(async(req,res)=>{const {rows}=await query(`SELECT (SELECT count(*) FROM guests WHERE event_id=$1)::int total_guests,(SELECT coalesce(sum(guest_count),0) FROM guests WHERE event_id=$1)::int people_count,(SELECT count(*) FROM invitations i JOIN guests g ON g.id=i.guest_id WHERE g.event_id=$1 AND i.status='sent')::int invitations_sent,(SELECT count(*) FROM invitations i JOIN guests g ON g.id=i.guest_id WHERE g.event_id=$1 AND i.status='pending')::int invitations_pending,(SELECT count(*) FROM allocations a JOIN guests g ON g.id=a.guest_id WHERE g.event_id=$1 AND a.status='checked_in')::int checked_in`,[req.params.eventId]);res.json(rows[0])}));
 
 app.post("/api/allocations",wrap(async(req,res)=>{
- const s=z.object({guest_id:z.string().uuid(),room_id:z.string().uuid(),check_in:z.string(),check_out:z.string(),guest_count:z.number().int().positive()}).parse(req.body);
+ const s=z.object({guest_id:z.string().uuid(),room_id:z.string().uuid(),check_in:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),check_out:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),guest_count:z.number().int().positive()}).parse(req.body);
+ if(new Date(s.check_out)<=new Date(s.check_in))return res.status(400).json({error:"Check-out must be after check-in"});
  const c=await pool.connect();try{await c.query("BEGIN");
  const room=await c.query("SELECT r.capacity,h.organizer_id FROM rooms r JOIN hotels h ON h.id=r.hotel_id WHERE r.id=$1 FOR UPDATE",[s.room_id]);
  if(!room.rowCount||room.rows[0].organizer_id!==req.user.sub){await c.query("ROLLBACK");return res.status(404).json({error:"Room not found"})}
- const guest=await c.query("SELECT g.id FROM guests g JOIN events e ON e.id=g.event_id WHERE g.id=$1 AND e.organizer_id=$2",[s.guest_id,req.user.sub]);
+ const guest=await c.query("SELECT g.id,g.guest_count FROM guests g JOIN events e ON e.id=g.event_id WHERE g.id=$1 AND e.organizer_id=$2",[s.guest_id,req.user.sub]);
  if(!guest.rowCount){await c.query("ROLLBACK");return res.status(404).json({error:"Guest not found"})}
+ if(s.guest_count>guest.rows[0].guest_count){await c.query("ROLLBACK");return res.status(400).json({error:"Allocated guest count cannot exceed the guest booking count"})}
  const used=await c.query("SELECT coalesce(sum(guest_count),0)::int n FROM allocations WHERE room_id=$1 AND status<>'cancelled' AND check_in<$3 AND check_out>$2",[s.room_id,s.check_in,s.check_out]);
  if(used.rows[0].n+s.guest_count>room.rows[0].capacity){await c.query("ROLLBACK");return res.status(409).json({error:"Room capacity exceeded",available:room.rows[0].capacity-used.rows[0].n})}
  const {rows}=await c.query("INSERT INTO allocations(guest_id,room_id,check_in,check_out,guest_count) VALUES($1,$2,$3,$4,$5) RETURNING *",[s.guest_id,s.room_id,s.check_in,s.check_out,s.guest_count]);
@@ -60,11 +62,13 @@ app.get("/api/allocations",wrap(async(req,res)=>{const {rows}=await query("SELEC
 app.post("/api/check-in/verify",wrap(async(req,res)=>{
  const s=z.object({token:z.string().min(20)}).parse(req.body);
  const hash=crypto.createHash("sha256").update(s.token).digest("hex");
- const {rows}=await query("SELECT q.guest_id,g.name,a.id allocation_id,a.status FROM qr_passes q JOIN guests g ON g.id=q.guest_id JOIN events e ON e.id=g.event_id LEFT JOIN allocations a ON a.guest_id=g.id WHERE q.token_hash=$1 AND q.active=true AND e.organizer_id=$2",[hash,req.user.sub]);
+ const {rows}=await query("SELECT q.guest_id,g.name,a.id allocation_id,a.status,a.check_in,a.check_out FROM qr_passes q JOIN guests g ON g.id=q.guest_id JOIN events e ON e.id=g.event_id LEFT JOIN allocations a ON a.guest_id=g.id AND a.status IN ('reserved','checked_in') WHERE q.token_hash=$1 AND q.active=true AND e.organizer_id=$2 ORDER BY a.created_at DESC",[hash,req.user.sub]);
  if(!rows.length)return res.status(404).json({error:"Invalid or inactive QR pass"});
- const a=rows.find(x=>x.allocation_id);if(!a)return res.status(409).json({error:"Guest has no room allocation"});
+ const matches=rows.filter(x=>x.allocation_id);if(!matches.length)return res.status(409).json({error:"Guest has no active room allocation"});
+ if(matches.length>1)return res.status(409).json({error:"This guest has multiple active room allocations. Select a room allocation before check-in.",allocations:matches.map(x=>({id:x.allocation_id,status:x.status,check_in:x.check_in,check_out:x.check_out}))});
+ const a=matches[0];
  if(a.status==="checked_in")return res.status(409).json({error:"Guest is already checked in"});
- const c=await pool.connect();try{await c.query("BEGIN");await c.query("UPDATE allocations SET status='checked_in' WHERE id=$1",[a.allocation_id]);await c.query("INSERT INTO checkins(allocation_id,action,recorded_by) VALUES($1,'check_in',$2)",[a.allocation_id,req.user.sub]);await c.query("COMMIT");res.json({ok:true,guest:a.name,allocation_id:a.allocation_id,status:"checked_in"})}catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
+ const c=await pool.connect();try{await c.query("BEGIN");const changed=await c.query("UPDATE allocations SET status='checked_in' WHERE id=$1 AND status='reserved' RETURNING id",[a.allocation_id]);if(!changed.rowCount){await c.query("ROLLBACK");return res.status(409).json({error:"This allocation is no longer available for check-in"})}await c.query("INSERT INTO checkins(allocation_id,action,recorded_by) VALUES($1,'check_in',$2)",[a.allocation_id,req.user.sub]);await c.query("COMMIT");res.json({ok:true,guest:a.name,allocation_id:a.allocation_id,status:"checked_in"})}catch(e){await c.query("ROLLBACK");throw e}finally{c.release()}
 }));
 app.post("/api/check-in/:allocationId/checkout",wrap(async(req,res)=>{
  const {rows}=await query("UPDATE allocations a SET status='checked_out' FROM guests g JOIN events e ON e.id=g.event_id WHERE a.id=$1 AND a.guest_id=g.id AND e.organizer_id=$2 AND a.status='checked_in' RETURNING a.*",[req.params.allocationId,req.user.sub]);
