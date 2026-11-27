@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#321f32"><title>EventStay · Guest Pass</title>
+<style>
+:root{color-scheme:light;--ink:#30232f;--muted:#81747d;--paper:#f7f2ec;--line:#e8ddd4;--accent:#a94f3f}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;color:var(--ink);min-height:100vh;display:grid;place-items:center;padding:24px}
+.card{width:min(100%,480px);background:#fffdfa;border:1px solid var(--line);border-radius:24px;overflow:hidden;box-shadow:0 24px 70px #39253818}
+.top{background:#321f32;color:#fff;padding:26px 28px}.brand{font-size:12px;letter-spacing:.2em;font-weight:800;color:#e5b8a7}.top h1{font:500 30px/1.15 Georgia,serif;margin:18px 0 5px}.top p{margin:0;color:#d8cbd4;font-size:13px}
+.content{padding:26px 28px}.eyebrow{font-size:10px;letter-spacing:.16em;font-weight:800;color:var(--accent);text-transform:uppercase}.guest{font:500 25px Georgia,serif;margin:5px 0 18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.item{padding:12px;border:1px solid var(--line);border-radius:12px;min-width:0}.item span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:4px}.item b{font-size:13px;overflow-wrap:anywhere}
+.qrwrap{margin:22px auto 8px;width:220px;min-height:220px;border:1px solid var(--line);border-radius:16px;display:grid;place-items:center;padding:12px;background:#fff}.qrwrap img,.qrwrap canvas{max-width:100%;height:auto}.hint{text-align:center;color:var(--muted);font-size:12px;margin:8px 0 0}
+.status{padding:12px 14px;background:#f8f1eb;border-radius:10px;color:#685a61;font-size:13px;margin-bottom:18px}.error{color:#9b3029}.footer{border-top:1px solid var(--line);padding:16px 28px;color:var(--muted);font-size:11px;text-align:center}
+@media(max-width:420px){body{padding:12px}.content{padding:22px 18px}.top{padding:22px 20px}.grid{gap:8px}.item{padding:10px}}
+</style>
+<script src="api-config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+</head>
+<body>
+<main class="card">
+ <header class="top"><div class="brand">EVENTSTAY</div><h1>Your guest pass</h1><p>Keep this pass ready when you arrive at your hotel.</p></header>
+ <section class="content">
+  <div id="message" class="status">Loading your booking…</div>
+  <div id="pass" hidden>
+   <div class="eyebrow">Guest / family booking</div><div class="guest" id="guestName"></div>
+   <div class="grid" id="details"></div>
+   <div class="qrwrap" id="qr"></div>
+   <p class="hint">Show this QR code to the hotel front desk. Staff will verify your booking before check-in.</p>
+  </div>
+ </section>
+ <footer class="footer">EventStay · Secure accommodation pass</footer>
+</main>
+<script>
+(async()=>{
+ const message=document.getElementById('message'),token=new URLSearchParams(location.search).get('token');
+ const api=String(window.EVENTSTAY_API_BASE||'').replace(/\/$/,'');
+ const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ if(!token){message.textContent='This pass link is incomplete.';message.classList.add('error');return}
+ if(!api){message.textContent='The EventStay server is not connected yet. Please contact your event organizer.';message.classList.add('error');return}
+ try{
+  const response=await fetch(api+'/api/public/guest-pass/'+encodeURIComponent(token),{cache:'no-store'});
+  const data=await response.json();
+  if(!response.ok)throw new Error(data.error||'Unable to load this pass');
+  document.getElementById('guestName').textContent=data.guest.name;
+  const first=data.allocations?.[0];
+  const items=[
+   ['Event',data.event.name],['Guests',data.guest.guest_count],
+   ['Hotel',first?.hotel_name||'Not assigned yet'],['Room',first?.room_number||'Pending'],
+   ['Check-in',first?.check_in||'—'],['Check-out',first?.check_out||'—'],
+   ['Hotel address',first?.hotel_address||'—'],['Event venue',data.event.venue_name||'—']
+  ];
+  document.getElementById('details').innerHTML=items.map(([k,v])=>'<div class="item"><span>'+esc(k)+'</span><b>'+esc(v)+'</b></div>').join('');
+  message.hidden=true;document.getElementById('pass').hidden=false;
+  const draw=()=>{if(!window.QRCode){message.hidden=false;message.textContent='QR generator did not load. Refresh this page or contact your organizer.';message.classList.add('error');return}
+   document.getElementById('qr').innerHTML='';
+   new QRCode(document.getElementById('qr'),{text:token,width:192,height:192,colorDark:'#241b25',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.H});
+  };
+  if(window.QRCode)draw();else setTimeout(draw,800);
+ }catch(e){message.textContent=e.message;message.classList.add('error')}
+})();
+</script>
+</body></html>
